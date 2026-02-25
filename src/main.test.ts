@@ -1,4 +1,4 @@
-import { it, describe, expect } from "vitest";
+import { it, describe, expect, vi, beforeEach } from "vitest";
 import {
   createUser,
   User,
@@ -10,8 +10,17 @@ import {
   trimAndFormat,
   getFirstElement,
   HasId,
-  findById
+  findById,
+  csvToJSON,
+  formatCSVFileToJSONFile,
+  CSVRow
 } from "./main";
+import { readFile, writeFile } from 'node:fs/promises';
+
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn()
+}));
 
 describe("test lab 1", () => {
   it("creating user", () => {
@@ -58,11 +67,11 @@ describe("test lab 1", () => {
     expect(trimAndFormat("  string   ", true)).toBe("STRING")
   })
   
-  it("returns first letter", () => {
+  it("returns first element", () => {
     expect(getFirstElement<number>([1, 2, 3])).toBe(1);
   })
   
-  it("returns undefined", () => {
+  it("returns undefined for empty array", () => {
     expect(getFirstElement<number>([])).toBeUndefined()
   })
   
@@ -84,4 +93,115 @@ describe("test lab 1", () => {
     
     expect(findById<HasId>(items, 8)).toStrictEqual({id: 8})
   })
+});
+
+describe('csvToJSON', () => {
+  it('should convert valid CSV data to JSON', () => {
+    const input = [
+      'name,age,city',
+      'John,25,New York',
+      'Jane,30,Los Angeles'
+    ];
+    const delimiter = ',';
+    
+    const result = csvToJSON(input, delimiter);
+    
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+  });
+
+  it('should handle different delimiters', () => {
+    const input = [
+      'name;age;city',
+      'John;25;New York',
+      'Jane;30;Los Angeles'
+    ];
+    const delimiter = ';';
+    
+    const result = csvToJSON(input, delimiter);
+    
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+  });
+
+  it('should handle empty input array', () => {
+    expect(csvToJSON([], ',')).toEqual([]);
+  });
+
+  it('should handle null/undefined input', () => {
+    expect(csvToJSON(null as any, ',')).toEqual([]);
+    expect(csvToJSON(undefined as any, ',')).toEqual([]);
+  });
+
+  it('should handle empty lines in CSV', () => {
+    const input = [
+      'name,age,city',
+      '',
+      'John,25,New York',
+      '   ',
+      'Jane,30,Los Angeles'
+    ];
+    const delimiter = ',';
+    
+    const result = csvToJSON(input, delimiter);
+    
+    expect(result.length).toBe(2);
+  });
+
+  it('should handle missing values', () => {
+    const input = [
+      'name,age,city',
+      'John,,New York',
+      'Jane,30,'
+    ];
+    const delimiter = ',';
+    
+    const result = csvToJSON(input, delimiter);
+    
+    expect(result.length).toBe(2);
+  });
+
+  it('should handle file with only headers', () => {
+    const input = ['name,age,city'];
+    const delimiter = ',';
+    
+    expect(csvToJSON(input, delimiter)).toEqual([]);
+  });
+});
+
+describe('formatCSVFileToJSONFile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should successfully convert CSV file to JSON file', async () => {
+    const mockCSVContent = 'name,age,city\nJohn,25,New York\nJane,30,Los Angeles';
+    
+    vi.mocked(readFile).mockResolvedValue(mockCSVContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    await formatCSVFileToJSONFile('input.csv', 'output.json', ',');
+
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(readFile).toHaveBeenCalledWith('input.csv', 'utf-8');
+
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(writeFile).toHaveBeenCalledWith(
+      'output.json', 
+      expect.any(String), 
+      'utf-8'
+    );
+  });
+
+  it('should handle empty CSV file', async () => {
+    const mockCSVContent = '';
+    
+    vi.mocked(readFile).mockResolvedValue(mockCSVContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    await formatCSVFileToJSONFile('input.csv', 'output.json', ',');
+
+    expect(writeFile).toHaveBeenCalledWith('output.json', '[]', 'utf-8');
+  });
 });

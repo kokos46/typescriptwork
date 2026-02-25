@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "fs/promises";
+
 export interface User {
   id: number;
   name: string;
@@ -144,3 +146,69 @@ const items: HasId[] = [
 ];
 
 console.log(findById<HasId>(items, 3));
+
+export interface CSVRow{
+  [key: string]: string;
+}
+
+export function csvToJSON(input: string[], delimiter: string): CSVRow[] {
+  if (!input || input.length === 0) {
+    return [];
+  }
+  
+  const headers: string[] = input[0]?.split(delimiter) || [];
+  
+  if (headers.length === 0) {
+    return [];
+  }
+  
+  const result: CSVRow[] = [];
+  
+  for (let i: number = 1; i < input.length; i++) {
+    const currentLine: string | undefined = input[i];
+    
+    if (!currentLine || currentLine.trim() === '') {
+      continue;
+    }
+    
+    const values: string[] = currentLine.split(delimiter);
+    const row: CSVRow = {};
+    
+    for (let j: number = 0; j < headers.length; j++) {
+      const header: string | undefined = headers[j];
+      const value: string | undefined = values[j];
+      
+      if (header) {
+        row[header] = value !== undefined ? value.trim() : '';
+      }
+    }
+    
+    result.push(row);
+  }
+  
+  return result;
+}
+
+let res = csvToJSON(["p1;p2;p3;p4", "1;A;b;c", "2;B;v;d"], ';');
+console.log(res);
+
+export async function formatCSVFileToJSONFile(
+  input: string, 
+  output: string, 
+  delimiter: string
+): Promise<void> {
+  try {
+    const fileContent = await readFile(input, 'utf-8');
+    
+    const lines = fileContent
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+    
+    const jsonData = csvToJSON(lines, delimiter);
+    
+    await writeFile(output, JSON.stringify(jsonData, null, 2), 'utf-8');
+  } catch (error: any) {
+    throw new Error(`Failed to process CSV file: ${error.message}`);
+  }
+}
