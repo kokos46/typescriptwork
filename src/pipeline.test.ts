@@ -26,7 +26,7 @@ describe("query builder", () => {
     const result = search(users);
 
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("Mike");
+    expect(result[0]?.name).toBe("Mike");
   });
 
   it("filters by multiple conditions", () => {
