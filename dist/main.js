@@ -1,14 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.trimAndFormat = exports.capitalizeFirstLetter = void 0;
-exports.createUser = createUser;
-exports.createBook = createBook;
-exports.calculateArea = calculateArea;
-exports.getStatusColor = getStatusColor;
-exports.getFirstElement = getFirstElement;
-exports.findById = findById;
-exports.csvToJSON = csvToJSON;
-function createUser(id, name, email, isActive) {
+import { readFile, writeFile } from "fs/promises";
+export function createUser(id, name, email, isActive) {
     return {
         id: id,
         name: name,
@@ -16,7 +7,7 @@ function createUser(id, name, email, isActive) {
         isActive: isActive,
     };
 }
-function createBook(book) {
+export function createBook(book) {
     return book;
 }
 const someBook = createBook({
@@ -32,14 +23,14 @@ const someBookWithoutYear = createBook({
 });
 console.log("Книга с годом: ", someBook, "\n");
 console.log("Книга без года: ", someBookWithoutYear);
-function calculateArea(shape, value) {
+export function calculateArea(shape, value) {
     return shape === "square" ? Math.pow(value, 2) : Math.PI * Math.pow(value, 2);
 }
 const circleArea = calculateArea("circle", 6);
 const squareArea = calculateArea("square", 6);
 console.log(circleArea);
 console.log(squareArea);
-function getStatusColor(status) {
+export function getStatusColor(status) {
     switch (status) {
         case "active":
             return "green";
@@ -49,26 +40,24 @@ function getStatusColor(status) {
             return "yellow";
     }
 }
-const capitalizeFirstLetter = (str) => {
+export const capitalizeFirstLetter = (str) => {
     if (!str)
         return str;
     return str.charAt(0).toUpperCase() + str.slice(1);
 };
-exports.capitalizeFirstLetter = capitalizeFirstLetter;
-const trimAndFormat = (str, uppercase = false) => {
+export const trimAndFormat = (str, uppercase = false) => {
     const trimmed = str.trim();
     return uppercase ? trimmed.toUpperCase() : trimmed;
 };
-exports.trimAndFormat = trimAndFormat;
-console.log((0, exports.capitalizeFirstLetter)("     привет", true));
-function getFirstElement(arr) {
+console.log(capitalizeFirstLetter("     привет", true));
+export function getFirstElement(arr) {
     return arr ? arr[0] : undefined;
 }
 const testMassiveInt = getFirstElement([1, 2, 4]);
 const testMassiveEmpty = getFirstElement([]);
 const testMassiveStr = getFirstElement(["1", "2", "4"]);
 console.log(testMassiveEmpty, testMassiveInt, testMassiveStr);
-function findById(items, id) {
+export function findById(items, id) {
     const sortedItems = [...items].sort((a, b) => a.id - b.id);
     let L = 0;
     let R = sortedItems.length - 1;
@@ -102,7 +91,7 @@ const items = [
     },
 ];
 console.log(findById(items, 3));
-function csvToJSON(input, delimiter) {
+export function csvToJSON(input, delimiter) {
     if (!input || input.length === 0) {
         return [];
     }
@@ -110,25 +99,39 @@ function csvToJSON(input, delimiter) {
     if (headers.length === 0) {
         return [];
     }
-    let res = [];
+    const result = [];
     for (let i = 1; i < input.length; i++) {
         const currentLine = input[i];
-        if (!currentLine) {
+        if (!currentLine || currentLine.trim() === '') {
             continue;
         }
         const values = currentLine.split(delimiter);
-        let temp = {};
+        const row = {};
         for (let j = 0; j < headers.length; j++) {
             const header = headers[j];
             const value = values[j];
             if (header) {
-                temp[header] = value || '';
+                row[header] = value !== undefined ? value.trim() : '';
             }
         }
-        res.push(temp);
+        result.push(row);
     }
-    return res;
+    return result;
 }
 let res = csvToJSON(["p1;p2;p3;p4", "1;A;b;c", "2;B;v;d"], ';');
 console.log(res);
+export async function formatCSVFileToJSONFile(input, output, delimiter) {
+    try {
+        const fileContent = await readFile(input, 'utf-8');
+        const lines = fileContent
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+        const jsonData = csvToJSON(lines, delimiter);
+        await writeFile(output, JSON.stringify(jsonData, null, 2), 'utf-8');
+    }
+    catch (error) {
+        throw new Error(`Failed to process CSV file: ${error.message}`);
+    }
+}
 //# sourceMappingURL=main.js.map

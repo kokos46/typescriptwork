@@ -24,6 +24,10 @@ export interface HasId {
     id: number;
 }
 export declare function findById<T extends HasId>(items: T[], id: number): T | undefined;
-export declare function csvToJSON(input: string[], delimiter: string): object[];
+export interface CSVRow {
+    [key: string]: string;
+}
+export declare function csvToJSON(input: string[], delimiter: string): CSVRow[];
+export declare function formatCSVFileToJSONFile(input: string, output: string, delimiter: string): Promise<void>;
 export {};
 //# sourceMappingURL=main.d.ts.map

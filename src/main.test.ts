@@ -14,7 +14,8 @@ import {
   csvToJSON,
   formatCSVFileToJSONFile,
   CSVRow
-} from "./main";
+} from "./main.ts";
+// } from "./main";
 import { readFile, writeFile } from 'node:fs/promises';
 
 vi.mock('node:fs/promises', () => ({
