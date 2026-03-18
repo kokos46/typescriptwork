@@ -9,7 +9,7 @@ type GroupBy<T> = <K extends keyof T>(key: K) => Transform<Group<T, K>[]>;
 type GroupTransform<T, K extends keyof T> = (groups: Group<T, K>[]) => Group<T, K>[];
 type Having<T> = <K extends keyof T>(predicate: (group: Group<T, K>) => boolean) => GroupTransform<T, K>;
 
-function query<T, W extends any[], G extends any[], H extends any[], S extends any[]>(
+export function query<T, W extends any[], G extends any[], H extends any[], S extends any[]>(
   ...steps: [
     ...W,           // where (сколько угодно)
     ...G,           // groupBy (сколько угодно) 
