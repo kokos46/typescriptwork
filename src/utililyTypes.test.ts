@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import type { DeepReadonly, PickedByType, EventHandlers } from './utilitytypes.ts';
 
-describe('Lab 6: Utility Types Tests', () => {
+describe('Utility Types Tests', () => {
 
   it('DeepReadonly should make nested properties readonly', () => {
     interface Config {
@@ -15,7 +15,6 @@ describe('Lab 6: Utility Types Tests', () => {
 
     type Result = DeepReadonly<Config>;
 
-    // Проверяем, что вложенные свойства получили модификатор readonly
     expectTypeOf<Result['db']>().toEqualTypeOf<{
       readonly port: number;
       readonly settings: {
@@ -23,7 +22,6 @@ describe('Lab 6: Utility Types Tests', () => {
       };
     }>();
     
-    // Проверка самого глубокого уровня
     expectTypeOf<Result['db']['settings']>().toEqualTypeOf<{
       readonly active: boolean;
     }>();
