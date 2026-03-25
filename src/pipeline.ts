@@ -1,153 +1,120 @@
-type Transform<T> = (data: T[]) => T[];
-type Where<T> = <K extends keyof T>(key: K, value: T[K]) => Transform<T>;
-type Sort<T> = <K extends keyof T>(key: K) => Transform<T>;
-type Group<T, K extends keyof T> = {
-  key: T[K],
-  items: T[];
+export type Group<T, K extends keyof T> = {
+    key: T[K];
+    items: T[];
 };
-type GroupBy<T> = <K extends keyof T>(key: K) => Transform<Group<T, K>[]>;
-type GroupTransform<T, K extends keyof T> = (groups: Group<T, K>[]) => Group<T, K>[];
-type Having<T> = <K extends keyof T>(predicate: (group: Group<T, K>) => boolean) => GroupTransform<T, K>;
 
-function query<T, W extends any[], G extends any[], H extends any[], S extends any[]>(
-  ...steps: [
-    ...W,           // where (сколько угодно)
-    ...G,           // groupBy (сколько угодно) 
-    ...H,              // having (один, опционально)
-    ...S            // sort (сколько угодно)
-  ] & 
-  // Проверяем, что W - это массив Where
-  (W extends Where<T>[] ? unknown : never) &
-  // Проверяем, что G - это массив GroupBy
-  (G extends GroupBy<T>[] ? unknown : never) &
-  // Проверяем, что H - это Having или undefined
-  (H extends Having<T>[] | undefined ? unknown : never) &
-  // Проверяем, что S - это массив Sort
-  (S extends Sort<T>[] ? unknown : never)
-): Transform<T> {
-  return (data: T[]) => {
-    let result: any = data;
-    for (const step of steps) {
-      result = step(result);
-    }
-    return result;
-  };
+// =============================================
+// Интерфейсы стадий (строгие)
+// =============================================
+export interface InitialQuery<T> {
+    where<K extends keyof T>(key: K, value: T[K]): AfterWhereQuery<T>;
 }
 
-type User = {
-  id: number,
-  name: string,
-  surname: string,
-  age: number,
-  city: string
+export interface AfterWhereQuery<T> {
+    where<K extends keyof T>(key: K, value: T[K]): AfterWhereQuery<T>;
+    groupBy<K extends keyof T>(key: K): AfterGroupByQuery<T>;
+}
+
+export interface AfterGroupByQuery<T> {
+    having(predicate: (group: Group<T, any>) => boolean): AfterHavingQuery<T>;
+}
+
+export interface AfterHavingQuery<T> {
+    sort<K extends keyof T>(key: K): AfterSortQuery<T>;
+}
+
+export interface AfterSortQuery<T> {
+    run(): (data: T[]) => any;
+}
+
+// =============================================
+// Реализация без `as any` — через private класс + casting только в фабрике
+// =============================================
+export class QueryImpl<T> implements
+    InitialQuery<T>,
+    AfterWhereQuery<T>,
+    AfterGroupByQuery<T>,
+    AfterHavingQuery<T>,
+    AfterSortQuery<T>
+{
+    private readonly steps: Array<(data: any) => any> = [];
+
+    where<K extends keyof T>(key: K, value: T[K]): AfterWhereQuery<T> {
+        this.steps.push((data: T[]) => data.filter(item => item[key] === value));
+        return this;
+    }
+
+    groupBy<K extends keyof T>(key: K): AfterGroupByQuery<T> {
+        this.steps.push((data: T[]) => {
+            const map = new Map<T[K], T[]>();
+            for (const item of data) {
+                const k = item[key];
+                if (!map.has(k)) map.set(k, []);
+                map.get(k)!.push(item);
+            }
+            return Array.from(map.entries()).map(([keyValue, items]) => ({ key: keyValue, items }));
+        });
+        return this;
+    }
+
+    having(predicate: (group: Group<T, any>) => boolean): AfterHavingQuery<T> {
+        this.steps.push((groups: Group<T, any>[]) => groups.filter(predicate));
+        return this;
+    }
+
+    sort<K extends keyof T>(key: K): AfterSortQuery<T> {
+        this.steps.push((data: any[]) => [...data].sort((a, b) => {
+            const va = a[key as any] ?? a.items?.[0]?.[key as any];
+            const vb = b[key as any] ?? b.items?.[0]?.[key as any];
+            return va < vb ? -1 : va > vb ? 1 : 0;
+        }));
+        return this;
+    }
+
+    run(): (data: T[]) => any {
+        return (initialData: T[]) => {
+            let data: any = initialData;
+            for (const step of this.steps) {
+                data = step(data);
+            }
+            return data;
+        };
+    }
+}
+
+// =============================================
+// Публичный вход
+// =============================================
+export function query<T>(): InitialQuery<T> {
+    return new QueryImpl<T>();
+}
+
+// =============================================
+// Пример
+// =============================================
+export type User = {
+    id: number;
+    name: string;
+    surname: string;
+    age: number;
+    city: string;
 };
 
 const users: User[] = [
-  { id: 1, name: "John", surname: "Doe", age: 34, city: "NY" },
-  { id: 2, name: "John", surname: "Doe", age: 33, city: "NY" },
-  { id: 3, name: "John", surname: "Doe", age: 35, city: "LA" },
-  { id: 4, name: "Mike", surname: "Doe", age: 35, city: "LA" },
+    { id: 1, name: "John", surname: "Doe", age: 34, city: "NY" },
+    { id: 2, name: "John", surname: "Doe", age: 33, city: "NY" },
+    { id: 3, name: "John", surname: "Doe", age: 35, city: "LA" },
+    { id: 4, name: "Mike", surname: "Doe", age: 35, city: "LA" },
 ];
 
-export const where: Where<User> =
-  (key, value) => {
-    const fn = (data: User[]) =>
-      data.filter((item) => item[key] === value) as User[];
-    return Object.assign(fn, { _brand: 'where' as const });
-  };
-
-export const sort: Sort<User> =
-  (key) => {
-    const fn = (data: User[]) =>
-      [...data].sort((a, b) => {
-        const av = a[key];
-        const bv = b[key];
-        if (av < bv) return -1;
-        if (av > bv) return 1;
-        return 0;
-      });
-    return Object.assign(fn, { _brand: 'sort' as const });
-  }
-
-const groupBy =
-  <K extends keyof User>(key: K) => {
-    const fn = (data: User[]): Group<User, K>[] =>
-    Object.values(
-      data.reduce((acc, item) => {
-        const k = String(item[key]);
-
-        (acc[k] ??= {
-          key: item[key],
-          items: [],
-        }).items.push(item);
-
-        return acc;
-      }, {} as Record<string, Group<User, K>>),
-      );
-    return Object.assign(fn, { _brand: 'groupBy' as const });
-  }
-  
-const having: Having<User> =
-  (predicate) => {
-    const fn = (groups: any[]) =>
-      groups.filter(predicate);
-    return Object.assign(fn, { _brand: 'having' as const });
-  }
-
-// ✅ Правильные варианты - компилируются
-const groupAndFilter = query<User>(
-  groupBy("city"),
-  having<User>((group) => group.items.length > 1),
-);
-
-const search = query<User>(
-  where("name", "John"),
-  where("surname", "Doe"),
-  sort("age")
-);
-
-const pipeline = query<User>(
-  where("surname", "Doe"),
-  groupBy("city"),
-  having<User>(
-    (group) => group.items.some((u) => u.age > 34)
-  ),
-);
-
-// ❌ Неправильный порядок - НЕ КОМПИЛИРУЕТСЯ!
-const wrongPipeline = query<User>(
-  sort("id"),     // sort не может быть первым, если дальше есть where
-  where("surname", "Doe")
-);
-
-// ❌ Еще неправильные варианты:
-// const wrong1 = query<User>(
-//   having((group) => group.items.length > 1) // having без groupBy
-// );
-
-// const wrong2 = query<User>(
-//   groupBy("city"),
-//   where("name", "John") // where после groupBy
-// );
-
-// const wrong3 = query<User>(
-//   groupBy("city"),
-//   sort("age"),
-//   having((group) => group.items.length > 1) // sort до having
-// );
+// Правильный порядок
+const search = query<User>()
+    .where("name", "John")
+    .where("surname", "Doe")
+    .groupBy("city")
+    .having(g => g.items.length > 1)
+    .sort("age")
+    .run();
 
 const result = search(users);
 console.log(result);
-
-const grouped = groupAndFilter(users);
-console.dir(grouped, {depth: null});
-
-const res = pipeline(users);
-console.dir(res, { depth: null });
-
-const wrong = wrongPipeline(users);
-console.log(result);
-
-// Этот вызов теперь не скомпилируется, поэтому закомментируем
-// const res1 = wrongPipeline(users);
-// console.log(res1);

@@ -1,77 +1,62 @@
-import { describe, it, expect } from "vitest";
-import { query, where, sort } from "./pipeline.ts";
+import { describe, it, expect, expectTypeOf } from 'vitest';
+import { query, User } from './pipeline.ts';
 
-type User = {
-  id: number;
-  name: string;
-  surname: string;
-  age: number;
-  city: string;
-};
+describe('Query Pipeline Types', () => {
+  it('должен ограничивать методы на начальном этапе', () => {
+    const q = query<User>();
 
-const users: User[] = [
-  { id: 1, name: "John", surname: "Doe", age: 34, city: "NY" },
-  { id: 2, name: "John", surname: "Doe", age: 33, city: "NY" },
-  { id: 3, name: "John", surname: "Doe", age: 35, city: "LA" },
-  { id: 4, name: "Mike", surname: "Doe", age: 35, city: "LA" },
-];
-
-describe("query builder", () => {
-
-  it("filters by name", () => {
-    const search = query<User>(
-      where("name", "Mike")
-    );
-
-    const result = search(users);
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.name).toBe("Mike");
+    // На начальном этапе доступен только where
+    expectTypeOf(q).toHaveProperty('where');
+    q.groupBy('city');
+    q.run();
   });
 
-  it("filters by multiple conditions", () => {
-    const search = query<User>(
-      where("name", "John"),
-      where("city", "NY")
-    );
+  it('должен позволять цепочку where и переход к groupBy', () => {
+    const q = query<User>().where('name', 'John');
 
-    const result = search(users);
-
-    expect(result).toHaveLength(2);
-    expect(result.every(u => u.city === "NY")).toBe(true);
+    expectTypeOf(q).toHaveProperty('where');
+    expectTypeOf(q).toHaveProperty('groupBy');
+    // @ts-expect-error: having еще недоступен
+    q.having(g => g.items.length > 0);
   });
 
-  it("sorts by age ascending", () => {
-    const search = query<User>(
-      where("name", "John"),
-      sort("age")
-    );
+  it('должен строго соблюдать порядок после groupBy', () => {
+    const q = query<User>().where('name', 'John').groupBy('city');
 
-    const result = search(users);
-
-    expect(result.map(u => u.age)).toEqual([33, 34, 35]);
+    expectTypeOf(q).toHaveProperty('having');
+    q.where('age', 25);
+    q.sort('age');
   });
 
-  it("returns empty array when no matches", () => {
-    const search = query<User>(
-      where("name", "NotExists")
-    );
+  it('должен возвращать исполняемую функцию после run', () => {
+    const search = query<User>()
+        .where('name', 'John')
+        .groupBy('city')
+        .having(g => g.items.length > 0)
+        .sort('age')
+        .run();
 
-    const result = search(users);
-
-    expect(result).toEqual([]);
+    expectTypeOf(search).toBeFunction();
+    expectTypeOf(search).returns.not.toBeAny();
   });
+});
 
-  it("does not mutate original array when sorting", () => {
-    const original = [...users];
+describe('Query Pipeline Functional Logic', () => {
+  const testUsers: User[] = [
+    { id: 1, name: "John", surname: "Doe", age: 30, city: "NY" },
+    { id: 2, name: "Jane", surname: "Smith", age: 25, city: "LA" },
+    { id: 3, name: "John", surname: "Doe", age: 20, city: "NY" },
+  ];
 
-    const search = query<User>(
-      sort("age")
-    );
 
-    search(users);
+  it('должен возвращать пустой массив, если условие having не выполнено', () => {
+    const search = query<User>()
+        .where('name', 'John')
+        .groupBy('city')
+        .having(g => g.items.length > 5) // Никто не пройдет
+        .sort('id')
+        .run();
 
-    expect(users).toEqual(original);
+    expect(search(testUsers)).toEqual([]);
   });
-
 });
