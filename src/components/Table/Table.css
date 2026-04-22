@@ -1,0 +1,51 @@
+#table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+    box-sizing: border-box;
+}
+
+#table th{
+    background-color: #f0f0f0;
+}
+
+#table th, 
+#table td {
+    width: 100px;
+    max-width: 100px;
+    border: 1px solid black;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+#table td p {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+#table td input {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: 2px solid blue;
+    background: transparent;
+    box-sizing: border-box;
+}
+
+.rowID {
+    text-align: center;
+    background-color: #f0f0f0;
+}
