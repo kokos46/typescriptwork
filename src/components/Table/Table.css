@@ -49,3 +49,39 @@
     text-align: center;
     background-color: #f0f0f0;
 }
+
+.cellDataEntry{
+    width: 100%;
+}
+
+.resizer-col {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+}
+
+.resizer-col:hover {
+    background-color: #2196f3;
+}
+
+.resizer-row {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    cursor: row-resize;
+    z-index: 10;
+}
+
+.resizer-row:hover {
+    background-color: #2196f3;
+}
+
+.rowID{position: relative;
+    height: inherit
+}
