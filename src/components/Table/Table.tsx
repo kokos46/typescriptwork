@@ -1,26 +1,43 @@
 import './Table.css'
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
+import {useParams} from "react-router-dom";
+import {useApp} from "../../AppContext.tsx";
 
-interface TableSize {
-  N: number;
-  M: number;
-}
+export default function Table() {
 
-export default function Table({ N, M }: TableSize) {
+  const {username, id} = useParams<{ username: string, id: string }>();
+  const {userData} = useApp()!
+
+  const tableId = id ? parseInt(id) : 0;
+  const currentUserData = username ? userData[username] : undefined;
+  const tableGlobalData = currentUserData?.tables[tableId];
+
   const getColumnName = (index: number): string => {
     let columnName = "";
     while (index >= 0) {
-      // Находим остаток от деления на 26 (количество букв в алфавите)
       columnName = String.fromCharCode((index % 26) + 65) + columnName;
-      // Переходим к следующему порядку
       index = Math.floor(index / 26) - 1;
     }
     return columnName;
   };
 
-  const columns = Array.from({ length: N }, (_, i) => getColumnName(i));
-  const rows = Array.from({ length: M }, (_, i) => (i + 1).toString());
+  const [size, setSize] = useState<{N: number, M: number}>({N: 26, M: 100})
+
+  useEffect(() => {
+    if (tableGlobalData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSize({
+        N: tableGlobalData.N,
+        M: tableGlobalData.M
+      });
+        // eslint-disable-next-line react-hooks/immutability
+        setTableData(tableGlobalData.data);
+    }
+  }, [tableGlobalData]);
+
+  const columns = Array.from({ length: size.N }, (_, i) => getColumnName(i));
+  const rows = Array.from({ length: size.M }, (_, i) => (i + 1).toString());
 
   const [editable, setEditable] = useState('');
   const [tableData, setTableData] = useState<Record<string, string>>({});
@@ -45,7 +62,7 @@ export default function Table({ N, M }: TableSize) {
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const currentPos = type === 'col' ? moveEvent.pageX : moveEvent.pageY;
-      const newSize = Math.max(50, startSize + (currentPos - startPos)); // Минимум 50px
+      const newSize = Math.max(50, startSize + (currentPos - startPos));
 
       if (type === 'col') {
         setColWidths(prev => ({ ...prev, [id]: newSize }));
@@ -106,10 +123,8 @@ export default function Table({ N, M }: TableSize) {
   const getDisplayValue = (cellId: string) => {
     const rawValue = tableData[cellId] || "";
 
-    // Если это не формула, просто возвращаем текст
     if (!rawValue.startsWith("=")) return rawValue;
 
-    // Если это формула, нам нужно её вычислить
     const equationData = translateEquation(rawValue);
     if (equationData) {
 
@@ -128,7 +143,6 @@ export default function Table({ N, M }: TableSize) {
         return isNaN(v) ? 0 : v;
       });
 
-      // Вычисляем результат в зависимости от типа
       switch (equationData["equationType"].toLowerCase()) {
         case "sum":
           return sum(values).toString();
@@ -216,8 +230,37 @@ export default function Table({ N, M }: TableSize) {
     }
   }
 
+  const [contextMenu, setContextMenu] = useState< {
+    x: number,
+    y: number,
+    visible: boolean
+  }>({
+    x: 0,
+    y: 0,
+    visible: false
+  });
+
+  const addColumn = () => {
+    setSize({...size, N: size.N + 1});
+  }
+
+  const addRow = () => {
+    setSize({...size, M: size.M + 1});
+  }
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.pageX, y: e.pageY, visible: true });
+  };
+
+  useEffect(() => {
+    const closeMenu = () => setContextMenu({ ...contextMenu, visible: false });
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, [contextMenu]);
+
   return (
-      <>
+      <div onContextMenu={(e) => handleContextMenu(e)}>
         <input type="text" value={selectedCellData} className="cellDataEntry" readOnly/>
         <table id="table">
           <thead>
@@ -272,6 +315,12 @@ export default function Table({ N, M }: TableSize) {
           ))}
           </tbody>
         </table>
-      </>
+        {contextMenu.visible && (
+          <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x, position: 'absolute' }}>
+            <div onClick={addColumn}>Добавить столбец</div>
+            <div onClick={addRow}>Добавить строку</div>
+          </div>
+        )}
+      </div>
   );
 }
