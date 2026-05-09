@@ -9,6 +9,7 @@ function App() {
   const {userData, setUserData} = useApp()!
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [deleteApprove, setDeleteApprove] = useState<Record<string, string>>();
 
   const currentUserData = username ? userData[username] : undefined;
   const tables = currentUserData?.tables || [];
@@ -62,6 +63,19 @@ function App() {
     }
   }
 
+  const handleDelete = (tableId: number) => {
+    const result = confirm("Уверены?")
+    if (result && username) {
+      setUserData({
+        ...userData,
+        [username] : {
+          ...userData[username],
+          tables : userData[username]?.tables?.filter((_, index) => index !== tableId)
+        }
+      })
+    }
+  }
+
   const handleRename = (e: React.KeyboardEvent<HTMLInputElement>, tableIndex: number) => {
     if (e.key === "Enter" && username) {
       const newName = e.currentTarget.value;
@@ -102,8 +116,9 @@ function App() {
               }
 
               <button onClick={() => handleDuplicate(tableIndex)}>Дублировать документ</button>
-
               <button onClick={() => setRenaming(true)}>Переименовать</button>
+              {/*<button onClick={>{deleteApprove}</button>*/}
+              <button className={`table${tableIndex}`} onClick={() => handleDelete(tableIndex)}>Удалить документ</button>
 
               <p className="date">
                 Создано: {new Date(table.created_at).toLocaleDateString('ru-RU')}
