@@ -7,7 +7,7 @@ import {useApp} from "../../AppContext.tsx";
 export default function Table() {
 
   const {username, id} = useParams<{ username: string, id: string }>();
-  const {userData} = useApp()!
+  const {userData, setUserData} = useApp()!
 
   const tableId = id ? parseInt(id) : 0;
   const currentUserData = username ? userData[username] : undefined;
@@ -50,6 +50,7 @@ export default function Table() {
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
 
   const startResizing = (
     e: React.MouseEvent,
@@ -259,8 +260,44 @@ export default function Table() {
     return () => window.removeEventListener('click', closeMenu);
   }, [contextMenu]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 's' && username) {
+        setSaving(true);
+        event.preventDefault();
+
+        const user = userData[username];
+        if (!user) return;
+
+        const updatedTable = {
+          name: tableGlobalData?.name || "Без названия",
+          created_at: tableGlobalData?.created_at || new Date().toISOString(),
+          N: size.N,
+          M: size.M,
+          data: tableData,
+          updated_at: new Date().toISOString()
+        };
+
+        setUserData({
+          ...userData,
+          [username]: {
+            ...user,
+            tables: user.tables.map((table, index) =>
+              index === tableId ? updatedTable : table
+            )
+          }
+        });
+        setSaving(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData]);
+
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>
+        <p>{saving ? "сохранение..." : "сохранено"}</p>
         <input type="text" value={selectedCellData} className="cellDataEntry" readOnly/>
         <table id="table">
           <thead>

@@ -8,7 +8,8 @@ interface AppContextType {
 interface UserData{
   tables: {
     name: string;
-    created_at: string
+    created_at: string,
+    updated_at: string,
     N: number,
     M: number,
     data: Record<string, string>;

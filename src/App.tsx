@@ -8,6 +8,7 @@ function App() {
   const {username} = useParams<{ username: string }>();
   const {userData, setUserData} = useApp()!
   const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   const currentUserData = username ? userData[username] : undefined;
   const tables = currentUserData?.tables || [];
@@ -21,6 +22,7 @@ function App() {
         const newTable = {
           name: tableName,
           created_at: new Date().toISOString(),
+          updated_at: "",
           N: 100,
           M: 100,
           data: {}
@@ -42,6 +44,49 @@ function App() {
     }
   }
 
+  const handleDuplicate = (tableId: number) => {
+    const table = structuredClone(tables[tableId]);
+    if (username){
+      table.name = table.name + " копия"
+
+      setUserData({
+        ...userData,
+        [username] : {
+          ...userData[username],
+          tables : [
+            ...userData[username]?.tables || [],
+            table
+          ]
+        }
+      })
+    }
+  }
+
+  const handleRename = (e: React.KeyboardEvent<HTMLInputElement>, tableIndex: number) => {
+    if (e.key === "Enter" && username) {
+      const newName = e.currentTarget.value;
+
+      if (!newName.trim()) return;
+
+      setUserData({
+        ...userData,
+        [username]: {
+          ...userData[username],
+          tables: userData[username].tables.map((table, index) => {
+            if (index === tableIndex) {
+              return {
+                ...table,
+                name: newName
+              };
+            }
+            return table;
+          })
+        }
+      });
+      setRenaming(false)
+    }
+  };
+
   return (
     <div className="App">
       <h1>Таблицы пользователя {username}</h1>
@@ -51,12 +96,21 @@ function App() {
         const displayData = table.data;
         return (
             <div key={tableIndex} className="table-card">
-              <Link to={`/table/${username}/${tableIndex}`}>
-                <h3>{table.name}</h3>
-              </Link>
+              {
+                renaming ? <input type="text" onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => handleRename(e, tableIndex)} defaultValue={table.name}/> :
+                  <Link to={`/table/${username}/${tableIndex}`}><h3>{table.name}</h3></Link>
+              }
+
+              <button onClick={() => handleDuplicate(tableIndex)}>Дублировать документ</button>
+
+              <button onClick={() => setRenaming(true)}>Переименовать</button>
 
               <p className="date">
                 Создано: {new Date(table.created_at).toLocaleDateString('ru-RU')}
+              </p>
+
+              <p>
+                Изменено: {new Date(table.updated_at).toLocaleDateString('ru-RU')}
               </p>
 
               <table className="preview-table">
