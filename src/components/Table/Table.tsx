@@ -1,5 +1,5 @@
 import './Table.css'
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect, useCallback, useRef} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
 import {useParams} from "react-router-dom";
 import {useApp} from "../../AppContext.tsx";
@@ -50,7 +50,7 @@ export default function Table() {
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState('');
 
   const startResizing = (
     e: React.MouseEvent,
@@ -254,11 +254,55 @@ export default function Table() {
     setContextMenu({ x: e.pageX, y: e.pageY, visible: true });
   };
 
+  const exportTable = (format: 'csv' | 'json') => {
+    let content = ''
+    let filename = `table_export_${new Date().toISOString()}`;
+    let contentType = ''
+
+
+    if (format === 'csv')
+    {
+      contentType = 'text/csv;charset=utf-8;';
+      filename += '.csv';
+
+      content += "," + columns.join(",") + "\n";
+
+      rows.forEach(row => {
+        content += row + ",";
+        const rowData = columns.map(col => {
+          const cellId = `${col}${row}`;
+          const value = tableData[cellId] || "";
+          return `"${value.toString().replace(/"/g, '""')}"`;
+        });
+        content += rowData.join(",") + "\n";
+      });
+    }
+    else if (format === 'json')
+    {
+      contentType = 'application/json;charset=utf-8;';
+      filename += '.json';
+      content = JSON.stringify(tableData, null, 2);
+    }
+
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   useEffect(() => {
     const closeMenu = () => setContextMenu({ ...contextMenu, visible: false });
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, [contextMenu]);
+
 
   const saveFunction = useCallback((event?: KeyboardEvent | BeforeUnloadEvent) => {
     if (!username) return;
@@ -268,7 +312,7 @@ export default function Table() {
     const user = userData[username];
     if (!user) return;
 
-    setSaving(true);
+    setSaving('saving');
     const updatedTable = {
       name: tableGlobalData?.name || "Без названия",
       created_at: tableGlobalData?.created_at || new Date().toISOString(),
@@ -287,8 +331,39 @@ export default function Table() {
         )
       }
     });
-    setSaving(false);
+    setSaving('saved');
   }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData]);
+
+  const stateRef = useRef({ tableData, size, tableGlobalData });
+
+  const performSave = useCallback(async () => {
+    if (!id) return;
+
+    setSaving('saving');
+
+    const { tableData: currentData, size: currentSize, tableGlobalData: currentGlobal } = stateRef.current;
+
+    const payload = {
+      name: currentGlobal?.name || "Без названия",
+      data: currentData,
+      N: currentSize.N,
+      M: currentSize.M,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/documents/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error('Server error');
+      setSaving('saved');
+    } catch (error) {
+      setSaving('error');
+    }
+  }, [id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -301,6 +376,8 @@ export default function Table() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData, saveFunction]);
 
+
+
   useEffect(() => {
     const handleClosePage = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -311,9 +388,22 @@ export default function Table() {
     return () => window.removeEventListener('beforeunload', handleClosePage);
   }, [saveFunction]);
 
+  useEffect(() => {
+
+    const timer = setTimeout(() => {
+      performSave();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [performSave]);
+
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>
-        <p>{saving ? "сохранение..." : "сохранено"}</p>
+        <p>
+          {saving === 'saving' && <span style={{color: 'orange'}}>⏳ Сохранение...</span>}
+          {saving === 'saved' && <span style={{color: 'green'}}>✅ Сохранено</span>}
+          {saving === 'error' && <span style={{color: 'red'}}>❌ Ошибка сохранения</span>}
+        </p>
         <input type="text" value={selectedCellData} className="cellDataEntry" readOnly/>
         <table id="table">
           <thead>
@@ -372,6 +462,8 @@ export default function Table() {
           <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x, position: 'absolute' }}>
             <div onClick={addColumn}>Добавить столбец</div>
             <div onClick={addRow}>Добавить строку</div>
+            <div onClick={() => exportTable('json')}>Экспорт в JSON</div>
+            <div onClick={() => exportTable('csv')}>Экспорт в CSV</div>
           </div>
         )}
       </div>
