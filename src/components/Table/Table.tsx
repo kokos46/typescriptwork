@@ -1,5 +1,5 @@
 import './Table.css'
-import {useState, useEffect} from 'react';
+import {useState, useEffect, useCallback} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
 import {useParams} from "react-router-dom";
 import {useApp} from "../../AppContext.tsx";
@@ -260,40 +260,56 @@ export default function Table() {
     return () => window.removeEventListener('click', closeMenu);
   }, [contextMenu]);
 
+  const saveFunction = useCallback((event?: KeyboardEvent | BeforeUnloadEvent) => {
+    if (!username) return;
+
+    event?.preventDefault();
+
+    const user = userData[username];
+    if (!user) return;
+
+    setSaving(true);
+    const updatedTable = {
+      name: tableGlobalData?.name || "Без названия",
+      created_at: tableGlobalData?.created_at || new Date().toISOString(),
+      N: size.N,
+      M: size.M,
+      data: tableData,
+      updated_at: new Date().toISOString()
+    };
+
+    setUserData({
+      ...userData,
+      [username]: {
+        ...user,
+        tables: user.tables.map((table, index) =>
+          index === tableId ? updatedTable : table
+        )
+      }
+    });
+    setSaving(false);
+  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 's' && username) {
-        setSaving(true);
-        event.preventDefault();
-
-        const user = userData[username];
-        if (!user) return;
-
-        const updatedTable = {
-          name: tableGlobalData?.name || "Без названия",
-          created_at: tableGlobalData?.created_at || new Date().toISOString(),
-          N: size.N,
-          M: size.M,
-          data: tableData,
-          updated_at: new Date().toISOString()
-        };
-
-        setUserData({
-          ...userData,
-          [username]: {
-            ...user,
-            tables: user.tables.map((table, index) =>
-              index === tableId ? updatedTable : table
-            )
-          }
-        });
-        setSaving(false);
+        saveFunction(event);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData]);
+  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData, saveFunction]);
+
+  useEffect(() => {
+    const handleClosePage = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      saveFunction(e)
+    }
+
+    window.addEventListener('beforeunload', handleClosePage);
+    return () => window.removeEventListener('beforeunload', handleClosePage);
+  }, [saveFunction]);
 
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>

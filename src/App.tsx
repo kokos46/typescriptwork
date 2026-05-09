@@ -9,7 +9,6 @@ function App() {
   const {userData, setUserData} = useApp()!
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [deleteApprove, setDeleteApprove] = useState<Record<string, string>>();
 
   const currentUserData = username ? userData[username] : undefined;
   const tables = currentUserData?.tables || [];
