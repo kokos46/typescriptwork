@@ -1,6 +1,5 @@
 import './App.css';
-import {useParams, Link} from "react-router-dom";
-import { useApp } from './AppContext.tsx';
+import {Link} from "react-router-dom";
 import {useAppDispatch, useAppSelector} from "./hooks.ts";
 import {setCreating, setRenaming} from "./slices/ui.ts";
 import {createTable, duplicateTable, renameTable, deleteTable, setActiveTable} from "./slices/documents.ts";
@@ -8,20 +7,18 @@ import {createTable, duplicateTable, renameTable, deleteTable, setActiveTable} f
 function App() {
 
   const dispatch = useAppDispatch()
-  const {username} = useParams<{ username: string }>();
-  const {userData} = useApp()!
+  const username = useAppSelector((state) => state.auth.username);
 
   const creating = useAppSelector((state) => state.ui.creating)
   const renaming = useAppSelector((state) => state.ui.renaming)
 
-  const currentUserData = username ? userData[username] : undefined;
-  const tables = currentUserData?.tables || [];
+  const tables = useAppSelector((state) => state.document.tables);
 
   const handleCreateTable = (e: React.KeyboardEvent<HTMLInputElement>) => {
 
     if (e.key === "Enter") {
       const tableName = e.currentTarget.value;
-      if (tableName && username) {
+      if (tableName) {
         dispatch(createTable(tableName));
         dispatch(setCreating(false));
       }
@@ -58,7 +55,7 @@ function App() {
   return (
     <div className="App">
       <h1>Таблицы пользователя {username}</h1>
-      <button onClick={() => setCreating(true)}>Создать новый документ</button>
+      <button onClick={() => dispatch(setCreating(true))}>Создать новый документ</button>
       {creating && <input onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => handleCreateTable(e)} type="text" placeholder="Название таблицы"/>}
       {tables.map((table, tableIndex) => {
         const displayData = table.data;

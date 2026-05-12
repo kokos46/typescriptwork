@@ -2,7 +2,6 @@ import './Table.css'
 import React, {useEffect, useCallback, useRef, useMemo} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
 import {useParams} from "react-router-dom";
-import {useApp} from "../../AppContext.tsx";
 import Cell from "./Cell/Cell.tsx";
 import {useAppDispatch, useAppSelector} from "../../hooks.ts";
 import {setSize,
@@ -14,17 +13,20 @@ import {setSize,
   setTableData,
   setColWidths,
   setRowHeights} from "../../slices/spreadsheet.ts";
+// import {setTableData} from "../../slices/documents.ts";
+import { setUserData } from "../../slices/auth.ts";
 
 import {setSaving, setContextMenu} from "../../slices/ui.ts";
 
 export default function Table() {
 
   const {username, id} = useParams<{ username: string, id: string }>();
-  const {userData, setUserData} = useApp()!
+  // const {userData, setUserData} = useApp()!
 
   const tableId = id ? parseInt(id) : 0;
-  const currentUserData = username ? userData[username] : undefined;
-  const tableGlobalData = currentUserData?.tables[tableId];
+  // const currentUserData = username ? userData[username] : undefined;
+  const rawTable = useAppSelector((state) => state.document.tables[tableId])
+  const allUserTables = useAppSelector((state) => state.auth.tables);
 
   const getColumnName = (index: number): string => {
     let columnName = "";
@@ -34,7 +36,6 @@ export default function Table() {
     }
     return columnName;
   };
-
 
 
   const dispatch = useAppDispatch();
@@ -58,15 +59,15 @@ export default function Table() {
 
 
   useEffect(() => {
-    if (tableGlobalData) {
+    if (rawTable) {
       dispatch(setSize({
-        N: tableGlobalData.N,
-        M: tableGlobalData.M
+        N: rawTable.N,
+        M: rawTable.M
       }));
         // eslint-disable-next-line react-hooks/immutability
-        dispatch(setTableData(tableGlobalData.data));
+        dispatch(setTableData(rawTable.data));
     }
-  }, [dispatch, tableGlobalData]);
+  }, [dispatch, rawTable]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -441,9 +442,9 @@ export default function Table() {
     stateRef.current = {
       tableData,
       size: {N, M},
-      tableGlobalData
+      rawTable
     };
-  }, [tableData, N, M, tableGlobalData]);
+  }, [tableData, N, M, rawTable]);
 
   useEffect(() => {
     const closeMenu = () => dispatch(setContextMenu({ ...contextMenu, visible: false }));
@@ -452,84 +453,58 @@ export default function Table() {
   }, [contextMenu]);
 
 
-  const saveFunction = useCallback((event?: KeyboardEvent | BeforeUnloadEvent) => {
-    if (!username) return;
-
-    event?.preventDefault();
-
-    const user = userData[username];
-    if (!user) return;
-
+  const saveFunction = useCallback(() => {
+    if (!username || !rawTable) return;
     dispatch(setSaving('saving'));
+
     const updatedTable = {
-      name: tableGlobalData?.name || "Без названия",
-      created_at: tableGlobalData?.created_at || new Date().toISOString(),
-      N: N,
-      M: M,
-      data: tableData,
+      ...rawTable,
+      N, M, data: tableData,
       updated_at: new Date().toISOString()
     };
 
-    setUserData({
-      ...userData,
-      [username]: {
-        ...user,
-        tables: user.tables.map((table, index) =>
-          index === tableId ? updatedTable : table
-        )
-      }
-    });
+    const newTables = allUserTables.map((t, i) => i === tableId ? updatedTable : t);
+    dispatch(setUserData(newTables)); // Отправляем обновленный массив в authSlice
     dispatch(setSaving('saved'));
-  }, [userData, tableData, N, M, username, tableId, tableGlobalData, setUserData]);
+  }, [username, rawTable, N, M, tableData, allUserTables, tableId, dispatch]);
 
-  const stateRef = useRef({ tableData, size: {N, M}, tableGlobalData });
+  const stateRef = useRef({ tableData, size: {N, M}, rawTable });
 
   const performSave = useCallback(async () => {
-
     dispatch(setSaving('saving'));
-
-    const { tableData: currentData, size: currentSize, tableGlobalData: currentGlobal } = stateRef.current;
-
-    const payload = {
-      name: currentGlobal?.name || "Без названия",
-      data: currentData,
-      N: currentSize.N,
-      M: currentSize.M,
-      updated_at: new Date().toISOString()
-    };
-
+    const { tableData: d, size: s, rawTable: r } = stateRef.current;
     try {
       const response = await fetch(`http://127.0.0.1:8000/documents/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: r?.name || "Без названия",
+          data: d, N: s.N, M: s.M,
+          updated_at: new Date().toISOString()
+        }),
       });
-
-      if (!response.ok) throw new Error('Server error');
+      if (!response.ok) throw new Error();
       dispatch(setSaving('saved'));
-    } catch (error) {
-      dispatch(setSaving('error'));
-      console.error('Error saving data:', error);
-    }
-  }, [id]);
+    } catch { dispatch(setSaving('error')); }
+  }, [id, dispatch]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 's' && username) {
-        saveFunction(event);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        saveFunction();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userData, tableData, N, M, username, tableId, tableGlobalData, setUserData, saveFunction]);
+  }, [saveFunction]);
 
 
 
   useEffect(() => {
     const handleClosePage = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      saveFunction(e)
+      saveFunction()
     }
 
     window.addEventListener('beforeunload', handleClosePage);
@@ -537,13 +512,9 @@ export default function Table() {
   }, [saveFunction]);
 
   useEffect(() => {
-
-    const timer = setTimeout(() => {
-      performSave();
-    }, 500);
-
+    const timer = setTimeout(performSave, 500);
     return () => clearTimeout(timer);
-  }, [performSave]);
+  }, [tableData, N, M, performSave]);
 
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>
