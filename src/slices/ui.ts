@@ -6,7 +6,9 @@ interface UiState {
     x: number,
     y: number,
     visible: boolean
-  }
+  },
+  creating: boolean,
+  renaming: boolean,
 }
 
 const initialState: UiState = {
@@ -15,7 +17,9 @@ const initialState: UiState = {
     x: 0,
     y: 0,
     visible: false
-  }
+  },
+  creating: false,
+  renaming: false
 }
 
 const uiSlice = createSlice({
@@ -27,9 +31,15 @@ const uiSlice = createSlice({
     },
     setContextMenu: (state, action: PayloadAction<{ x: number, y: number, visible: boolean }>) => {
       state.contextMenu = action.payload
+    },
+    setCreating: (state, action: PayloadAction<boolean>) => {
+      state.creating = action.payload
+    },
+    setRenaming: (state, action: PayloadAction<boolean>) => {
+      state.renaming = action.payload
     }
   }
 })
 
 export default uiSlice.reducer;
-export const {setSaving, setContextMenu} = uiSlice.actions;
+export const {setSaving, setContextMenu, setCreating, setRenaming} = uiSlice.actions;

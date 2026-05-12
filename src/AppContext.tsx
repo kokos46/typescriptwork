@@ -9,6 +9,7 @@ interface UserData{
   tables: {
     name: string;
     created_at: string,
+    active: boolean,
     updated_at: string,
     N: number,
     M: number,
