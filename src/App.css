@@ -5,13 +5,13 @@
     border-radius: 4px;
 }
 
-.context-menu div{
+.context-menu div, label{
     padding: 1px;
     border: solid 1px grey;
     border-radius: 2px;
 }
 
-.context-menu div:hover{
+.context-menu div:hover, label:hover{
     background: aqua;
     cursor: pointer;
 }

@@ -1,8 +1,21 @@
 import './Table.css'
-import {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useEffect, useCallback, useRef, useMemo} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
 import {useParams} from "react-router-dom";
 import {useApp} from "../../AppContext.tsx";
+import Cell from "./Cell/Cell.tsx";
+import {useAppDispatch, useAppSelector} from "../../hooks.ts";
+import {setSize,
+  setEditable,
+  setIsEditable,
+  setSelectedCells,
+  setAnchorCell,
+  setSelectedCellData,
+  setTableData,
+  setColWidths,
+  setRowHeights} from "../../slices/spreadsheet.ts";
+
+import {setSaving, setContextMenu} from "../../slices/ui.ts";
 
 export default function Table() {
 
@@ -22,35 +35,45 @@ export default function Table() {
     return columnName;
   };
 
-  const [size, setSize] = useState<{N: number, M: number}>({N: 26, M: 100})
+
+
+  const dispatch = useAppDispatch();
+  const {N, M} = useAppSelector((state) => (state.spreadsheet.size))
+  const editable = useAppSelector((state) => state.spreadsheet.editable)
+  const isEditable = useAppSelector((state) => state.spreadsheet.isEditable)
+  const selectedCells = useAppSelector((state) => state.spreadsheet.selectedCells)
+  const anchorCell = useAppSelector((state) => state.spreadsheet.anchorCell)
+  const selectedCellData = useAppSelector((state) => state.spreadsheet.selectedCellData)
+  const tableData = useAppSelector((state) => state.spreadsheet.tableData)
+  const colWidths = useAppSelector((state) => state.spreadsheet.colWidths)
+  const rowHeights = useAppSelector((state) => state.spreadsheet.rowHeights)
+  const saving = useAppSelector((state) => state.ui.saving)
+  const contextMenu = useAppSelector((state) => state.ui.contextMenu)
+
+
+
+  const columns = Array.from({ length: N }, (_, i) => getColumnName(i));
+  const rows = Array.from({ length: M }, (_, i) => (i + 1).toString());
+
+
 
   useEffect(() => {
     if (tableGlobalData) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSize({
+      dispatch(setSize({
         N: tableGlobalData.N,
         M: tableGlobalData.M
-      });
+      }));
         // eslint-disable-next-line react-hooks/immutability
-        setTableData(tableGlobalData.data);
+        dispatch(setTableData(tableGlobalData.data));
     }
-  }, [tableGlobalData]);
+  }, [dispatch, tableGlobalData]);
 
-  const columns = Array.from({ length: size.N }, (_, i) => getColumnName(i));
-  const rows = Array.from({ length: size.M }, (_, i) => (i + 1).toString());
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [editable, setEditable] = useState('');
-  const [tableData, setTableData] = useState<Record<string, string>>({});
-  const [isEditable, setIsEditable] = useState(false);
-
-  // Измененные состояния для работы с диапазоном
-  const [selectedCells, setSelectedCells] = useState<string[]>([]);
-  const [anchorCell, setAnchorCell] = useState<{ r: number, c: number } | null>(null);
-  const [selectedCellData, setSelectedCellData] = useState("");
-
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
-  const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
-  const [saving, setSaving] = useState('');
+  const handleImportClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    fileInputRef.current?.click();
+  };
 
   const startResizing = (
     e: React.MouseEvent,
@@ -66,9 +89,9 @@ export default function Table() {
       const newSize = Math.max(50, startSize + (currentPos - startPos));
 
       if (type === 'col') {
-        setColWidths(prev => ({ ...prev, [id]: newSize }));
+        dispatch(setColWidths({ ...colWidths, [id]: newSize }));
       } else {
-        setRowHeights(prev => ({ ...prev, [id]: newSize }));
+        dispatch(setRowHeights({ ...rowHeights, [id]: newSize }));
       }
     };
 
@@ -81,26 +104,26 @@ export default function Table() {
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  const editTable = (e: React.MouseEvent<HTMLTableCellElement>) => {
+  const editTable = useCallback((e: React.MouseEvent<HTMLTableCellElement>) => {
     const cell = e.currentTarget;
     const columnIndex = cell.getAttribute('data-header');
     const rowIndex = cell.parentElement?.querySelector('.rowID')?.textContent;
 
     if (columnIndex && rowIndex) {
-      setEditable(`${columnIndex}${rowIndex}`);
-      setIsEditable(true);
+      dispatch(setEditable(`${columnIndex}${rowIndex}`));
+      dispatch(setIsEditable(true));
     }
-  }
+  }, [dispatch])
 
-  const editTableEnter = (e: React.KeyboardEvent<HTMLTableCellElement>) => {
+  const editTableEnter = useCallback((e: React.KeyboardEvent<HTMLTableCellElement>) => {
     if ('key' in e && e.key === 'Enter' && !isEditable) {
       const cell = e.currentTarget;
       const columnIndex = cell.getAttribute('data-header');
       const rowIndex = cell.parentElement?.firstChild?.textContent;
-      setEditable(`${columnIndex}${rowIndex}`);
-      setIsEditable(true);
+      dispatch(setEditable(`${columnIndex}${rowIndex}`));
+      dispatch(setIsEditable(true));
     }
-  }
+  }, [dispatch, isEditable])
 
 
   const translateEquation = (equation: string): Record<string, string> | undefined => {
@@ -121,7 +144,44 @@ export default function Table() {
     }
   }
 
-  const getDisplayValue = (cellId: string) => {
+  const simpleEquation = useCallback((rawValue: string) => {
+    if (!rawValue.includes("+") && !rawValue.includes("*")) return;
+    const equationData = rawValue.match(/([A-Z]+)(\d+)([+*])([A-Z]+)(\d+)/);
+    if (equationData) {
+      switch (equationData[3]) {
+        case "+":
+          return (Number.parseFloat(tableData[`${equationData[1]}${equationData[2]}`])
+            +Number.parseFloat(tableData[`${equationData[4]}${equationData[5]}`])).toString();
+        case "*":
+          return (Number.parseFloat(tableData[`${equationData[1]}${equationData[2]}`])
+            *Number.parseFloat(tableData[`${equationData[4]}${equationData[5]}`])).toString();
+      }
+    }
+  }, [tableData])
+
+  const getCellRange = (
+    startR: number,
+    endR: number,
+    startC: number,
+    endC: number,
+    columns: string[],
+    rows: string[]
+  ): string[] => {
+    const range: string[] = [];
+    const minR = Math.min(startR, endR);
+    const maxR = Math.max(startR, endR);
+    const minC = Math.min(startC, endC);
+    const maxC = Math.max(startC, endC);
+
+    for (let r = minR; r <= maxR; r++) {
+      for (let c = minC; c <= maxC; c++) {
+        range.push(`${columns[c]}${rows[r]}`);
+      }
+    }
+    return range;
+  };
+
+  const getDisplayValue = useCallback((cellId: string) => {
     const rawValue = tableData[cellId] || "";
 
     if (!rawValue.startsWith("=")) return rawValue;
@@ -130,9 +190,8 @@ export default function Table() {
     if (equationData) {
 
       const range = equationData['argument'].match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/);
-      if (!range) return "#ERROR!"; // Если формат диапазона неверный
+      if (!range) return "#ERROR!";
 
-      // Получаем индексы и ячейки (используем вашу логику)
       const startCol = range[1].toUpperCase().charCodeAt(0) - 65;
       const startRow = parseInt(range[2]) - 1;
       const endCol = range[3].toUpperCase().charCodeAt(0) - 65;
@@ -154,67 +213,45 @@ export default function Table() {
       }
     }
     return simpleEquation(rawValue);
-  }
+  }, [columns, rows, simpleEquation, tableData])
 
-  const simpleEquation = (rawValue: string) => {
-    if (!rawValue.includes("+") && !rawValue.includes("*")) return;
-    const equationData = rawValue.match(/([A-Z]+)(\d+)([+*])([A-Z]+)(\d+)/);
-    if (equationData) {
-      switch (equationData[3]) {
-        case "+":
-          return (Number.parseFloat(tableData[`${equationData[1]}${equationData[2]}`])
-              +Number.parseFloat(tableData[`${equationData[4]}${equationData[5]}`])).toString();
-        case "*":
-          return (Number.parseFloat(tableData[`${equationData[1]}${equationData[2]}`])
-              *Number.parseFloat(tableData[`${equationData[4]}${equationData[5]}`])).toString();
-      }
+
+
+  const displayCache = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+
+    for (const key in tableData) {
+      map[key] = getDisplayValue(key);
     }
-  }
 
-  const handleSubmit = (e: React.KeyboardEvent<HTMLInputElement>,
+    return map;
+  }, [tableData]);
+
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const handleSubmit = useCallback((e: React.KeyboardEvent<HTMLInputElement>,
                                                               row: string,
                                                               col: string) => {
     if (e.key === "Enter") {
       const newValue = e.currentTarget.value
 
-
-      setTableData(prev => ({
-        ...prev,
+      const newData = {
+        ...tableData,
         [`${col}${row}`]: newValue
-      }));
-      setEditable('');
-      setSelectedCellData(newValue);
-      setIsEditable(false);
-    }
-  }
-
-  const getCellRange = (
-      startR: number,
-      endR: number,
-      startC: number,
-      endC: number,
-      columns: string[],
-      rows: string[]
-  ): string[] => {
-    const range: string[] = [];
-    const minR = Math.min(startR, endR);
-    const maxR = Math.max(startR, endR);
-    const minC = Math.min(startC, endC);
-    const maxC = Math.max(startC, endC);
-
-    for (let r = minR; r <= maxR; r++) {
-      for (let c = minC; c <= maxC; c++) {
-        range.push(`${columns[c]}${rows[r]}`);
       }
-    }
-    return range;
-  };
 
-  const handleClickSelect = (e: React.MouseEvent, colIndex: number, rowIndex: number) => {
+      dispatch(setTableData(newData));
+      dispatch(setEditable(''));
+      dispatch(setSelectedCellData(newValue));
+      dispatch(setIsEditable(false));
+    }
+  }, [dispatch, tableData])
+
+
+
+  const handleClickSelect = useCallback((e: React.MouseEvent, colIndex: number, rowIndex: number) => {
     const cellId = `${columns[colIndex]}${rows[rowIndex]}`;
 
     if (e.shiftKey && anchorCell) {
-      // Логика выделения диапазона
       const range = getCellRange(
           anchorCell.r,
           rowIndex,
@@ -223,35 +260,36 @@ export default function Table() {
           columns,
           rows
       );
-      setSelectedCells(range);
+      dispatch(setSelectedCells(range));
     } else {
-      setAnchorCell({ r: rowIndex, c: colIndex });
-      setSelectedCells([cellId]);
-      setSelectedCellData(tableData[cellId] || "");
+      dispatch(setAnchorCell({ r: rowIndex, c: colIndex }));
+      dispatch(setSelectedCells([cellId]));
+      dispatch(setSelectedCellData(tableData[cellId] || ""));
     }
-  }
+  }, [anchorCell, columns, dispatch, rows, tableData])
 
-  const [contextMenu, setContextMenu] = useState< {
-    x: number,
-    y: number,
-    visible: boolean
-  }>({
-    x: 0,
-    y: 0,
-    visible: false
-  });
+  // const [contextMenu, setContextMenu] = useState< {
+  //   x: number,
+  //   y: number,
+  //   visible: boolean
+  // }>({
+  //   x: 0,
+  //   y: 0,
+  //   visible: false
+  // });
 
   const addColumn = () => {
-    setSize({...size, N: size.N + 1});
+    dispatch(setSize({N: N+1, M: M}));
   }
 
   const addRow = () => {
-    setSize({...size, M: size.M + 1});
+    // setSize({...size, M: size.M + 1});
+    dispatch(setSize({N: N, M: M+1}));
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setContextMenu({ x: e.pageX, y: e.pageY, visible: true });
+    dispatch(setContextMenu({ x: e.pageX, y: e.pageY, visible: true }));
   };
 
   const exportTable = (format: 'csv' | 'json') => {
@@ -281,7 +319,11 @@ export default function Table() {
     {
       contentType = 'application/json;charset=utf-8;';
       filename += '.json';
-      content = JSON.stringify(tableData, null, 2);
+      content = JSON.stringify({
+        N: N,
+        M: M,
+        data: tableData,
+      }, null, 2);
     }
 
     const blob = new Blob([content], { type: contentType });
@@ -297,8 +339,114 @@ export default function Table() {
     document.body.removeChild(link);
   }
 
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+
+        if (file.name.endsWith(".csv")) {
+          const lines = content
+            .replace(/\r/g, "")
+            .split("\n")
+            .filter((line) => line.trim() !== "");
+
+          if (lines.length === 0) {
+            alert("CSV файл пуст");
+            return;
+          }
+
+          // Парсер CSV строки
+          const parseCSVLine = (line: string): string[] => {
+            const result: string[] = [];
+            let current = "";
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+
+              if (char === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                  current += '"';
+                  i++;
+                } else {
+                  inQuotes = !inQuotes;
+                }
+              } else if (char === "," && !inQuotes) {
+                result.push(current);
+                current = "";
+              } else {
+                current += char;
+              }
+            }
+
+            result.push(current);
+
+            return result;
+          };
+
+          const headers = parseCSVLine(lines[0]);
+
+          const newN = headers.length - 1;
+          const newM = lines.length - 1;
+
+          const newData: Record<string, string> = {};
+
+          for (let rowIndex = 1; rowIndex < lines.length; rowIndex++) {
+            const cells = parseCSVLine(lines[rowIndex]);
+
+            const rowNumber = rowIndex.toString();
+
+            for (let colIndex = 1; colIndex < cells.length; colIndex++) {
+              const value = cells[colIndex];
+
+              if (value !== "") {
+                const colName = getColumnName(colIndex - 1);
+
+                newData[`${colName}${rowNumber}`] = value;
+              }
+            }
+          }
+
+          setSize({
+            N: newN,
+            M: newM,
+          });
+
+          setTableData(newData);
+
+          alert("CSV успешно импортирован");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Ошибка импорта файла");
+      }
+    };
+
+    reader.onerror = () => {
+      alert("Ошибка чтения файла");
+    };
+
+    reader.readAsText(file);
+
+    e.target.value = "";
+  };
+
   useEffect(() => {
-    const closeMenu = () => setContextMenu({ ...contextMenu, visible: false });
+    stateRef.current = {
+      tableData,
+      size: {N, M},
+      tableGlobalData
+    };
+  }, [tableData, N, M, tableGlobalData]);
+
+  useEffect(() => {
+    const closeMenu = () => dispatch(setContextMenu({ ...contextMenu, visible: false }));
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, [contextMenu]);
@@ -312,12 +460,12 @@ export default function Table() {
     const user = userData[username];
     if (!user) return;
 
-    setSaving('saving');
+    dispatch(setSaving('saving'));
     const updatedTable = {
       name: tableGlobalData?.name || "Без названия",
       created_at: tableGlobalData?.created_at || new Date().toISOString(),
-      N: size.N,
-      M: size.M,
+      N: N,
+      M: M,
       data: tableData,
       updated_at: new Date().toISOString()
     };
@@ -331,15 +479,14 @@ export default function Table() {
         )
       }
     });
-    setSaving('saved');
-  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData]);
+    dispatch(setSaving('saved'));
+  }, [userData, tableData, N, M, username, tableId, tableGlobalData, setUserData]);
 
-  const stateRef = useRef({ tableData, size, tableGlobalData });
+  const stateRef = useRef({ tableData, size: {N, M}, tableGlobalData });
 
   const performSave = useCallback(async () => {
-    if (!id) return;
 
-    setSaving('saving');
+    dispatch(setSaving('saving'));
 
     const { tableData: currentData, size: currentSize, tableGlobalData: currentGlobal } = stateRef.current;
 
@@ -359,9 +506,10 @@ export default function Table() {
       });
 
       if (!response.ok) throw new Error('Server error');
-      setSaving('saved');
+      dispatch(setSaving('saved'));
     } catch (error) {
-      setSaving('error');
+      dispatch(setSaving('error'));
+      console.error('Error saving data:', error);
     }
   }, [id]);
 
@@ -374,7 +522,7 @@ export default function Table() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [userData, tableData, size, username, tableId, tableGlobalData, setUserData, saveFunction]);
+  }, [userData, tableData, N, M, username, tableId, tableGlobalData, setUserData, saveFunction]);
 
 
 
@@ -435,23 +583,20 @@ export default function Table() {
                   const isSelected = selectedCells.includes(cellId);
 
                   return (
-                      <td onDoubleClick={editTable}
-                          onClick={(e) => handleClickSelect(e, colIndex, rowIndex)}
-                          data-header={col}
-                          tabIndex={0}
-                          key={cellId}
-                          onKeyDown={(e) => editTableEnter(e)}
-                          style={{
-                            "border": isSelected ? "2px solid blue" : "1px solid black",
-                            "backgroundColor": isSelected ? "#e7f0ff" : "transparent"
-                          }}>
-                        {editable === cellId ? (
-                            <input type="text"
-                                   onKeyDown={(e) => handleSubmit(e, row, col)}
-                                   autoFocus
-                                   defaultValue={tableData[cellId] || ''} />
-                        ) : <p>{getDisplayValue(cellId)}</p>}
-                      </td>
+                    <Cell
+                      displayValue={displayCache[cellId]}
+                      editable={editable}
+                      cellId={cellId}
+                      col={col}
+                      row={row}
+                      isSelected={isSelected}
+                      handleClickSelect={handleClickSelect}
+                      handleSubmit={handleSubmit}
+                      editTable={editTable}
+                      editTableEnter={editTableEnter}
+                      colIndex={colIndex}
+                      rowIndex={rowIndex}
+                    />
                   )
                 })}
               </tr>
@@ -464,8 +609,16 @@ export default function Table() {
             <div onClick={addRow}>Добавить строку</div>
             <div onClick={() => exportTable('json')}>Экспорт в JSON</div>
             <div onClick={() => exportTable('csv')}>Экспорт в CSV</div>
+            <button onClick={handleImportClick}>Импортировать файл</button>
           </div>
         )}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".csv,.json"
+          onChange={importData}
+          style={{ display: 'none' }}
+        />
       </div>
   );
 }

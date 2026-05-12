@@ -23,7 +23,7 @@ function App() {
           name: tableName,
           created_at: new Date().toISOString(),
           updated_at: "",
-          N: 100,
+          N: 28,
           M: 100,
           data: {}
         };

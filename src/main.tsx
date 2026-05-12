@@ -6,6 +6,9 @@ import NotFound from "./components/NotFound.tsx";
 import Table from "./components/Table/Table.tsx";
 import {AppProvider} from "./AppContext.tsx";
 import Auth from "./components/Auth/Auth.tsx";
+import {Provider} from "react-redux";
+import {store} from "./store.ts";
+
 
 
 const router = createBrowserRouter([
@@ -27,7 +30,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppProvider>
-      <RouterProvider router={router}/>
+      <Provider store={store}>
+        <RouterProvider router={router}/>
+      </Provider>
     </AppProvider>
   </StrictMode>,
 )
