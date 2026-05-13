@@ -1,5 +1,5 @@
 import {createAsyncThunk, createSlice, type PayloadAction} from '@reduxjs/toolkit'
-import {type TableData, setUserData} from "./auth.ts";
+import {type TableData} from "./auth.ts";
 
 interface DocumentsSlice{
   tables: TableData[]
@@ -19,11 +19,31 @@ const emptyTable = {
   data: {}
 }
 
+const STORAGE_KEY = 'myTableApp_Data';
+
+const readStorageData = (): Record<string, { tables: TableData[] }> => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+const writeUserTables = (username: string, tables: TableData[]) => {
+  const allData = readStorageData();
+
+  allData[username] = {
+    tables
+  };
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
+}
+
 export const updateDocumentsAndSync = createAsyncThunk(
   'documents/syncWithAuth',
-  async (newTables: TableData[], { dispatch }) => {
+  async ({newTables, username}:{newTables: TableData[], username: string}, { dispatch }) => {
+    writeUserTables(username, newTables);
     dispatch(setLocalTables(newTables));
-    dispatch(setUserData(newTables));
   }
 );
 
@@ -47,7 +67,7 @@ const documentsSlice = createSlice({
       const newTable = {
         ...emptyTable,
         name: action.payload,
-        created_at: new Date().toISOString(), // Добавляем дату создания
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
       state.tables.push(newTable);
@@ -61,13 +81,20 @@ const documentsSlice = createSlice({
       M: number,
       data: Record<string, string>;
     }>) => {
-      state.tables.push(table.payload);
+      state.tables.push({
+        ...table.payload,
+        updated_at: new Date().toISOString()
+      });
     },
     renameTable: (state, action: PayloadAction<{name: string, newName: string}>) => {
       const {name, newName} = action.payload;
       state.tables = state.tables.map(table => {
         if (table.name === name) {
-          return {...table, name: newName};
+          return {
+            ...table,
+            name: newName,
+            updated_at: new Date().toISOString()
+          };
         }
         return table;
       });
@@ -80,15 +107,17 @@ const documentsSlice = createSlice({
       const {name, data} = action.payload;
       state.tables = state.tables.map(table => {
         if (table.name === name) {
-          return {...table, data};
+          return {
+            ...table,
+            data,
+            updated_at: new Date().toISOString()
+          };
         }
         return table;
       });
-    },
+    }
   }
 })
-
-
 
 export default documentsSlice.reducer;
 export const {setActiveTable, createTable, duplicateTable, renameTable, deleteTable, setTableData, setLocalTables} = documentsSlice.actions;

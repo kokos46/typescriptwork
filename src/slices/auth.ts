@@ -13,12 +13,10 @@ export interface TableData {
 
 interface AuthState {
   username: string;
-  tables: TableData[];
 }
 
 const initialState: AuthState = {
   username: '',
-  tables: []
 };
 
 const authSlice = createSlice({
@@ -27,12 +25,9 @@ const authSlice = createSlice({
   reducers: {
     setUsername: (state, action: PayloadAction<string>) => {
       state.username = action.payload;
-    },
-    setUserData: (state, action: PayloadAction<TableData[]>) => {
-      state.tables = action.payload;
     }
   }
 });
 
 export default authSlice.reducer;
-export const { setUsername, setUserData } = authSlice.actions;
+export const { setUsername } = authSlice.actions;

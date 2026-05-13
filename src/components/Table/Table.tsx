@@ -4,7 +4,8 @@ import {sum, average} from "../../utils/Equations.ts";
 import {useParams} from "react-router-dom";
 import Cell from "./Cell/Cell.tsx";
 import {useAppDispatch, useAppSelector} from "../../hooks.ts";
-import {setSize,
+import {
+  setSize,
   setEditable,
   setIsEditable,
   setSelectedCells,
@@ -12,9 +13,15 @@ import {setSize,
   setSelectedCellData,
   setTableData,
   setColWidths,
-  setRowHeights} from "../../slices/spreadsheet.ts";
-// import {setTableData} from "../../slices/documents.ts";
-import { setUserData } from "../../slices/auth.ts";
+  setRowHeights,
+  setCurrentTableIndex,
+  setCurrentDocumentId,
+  setTableName,
+  undo,
+  redo,
+  recordUpdate
+} from "../../slices/spreadsheet.ts";
+import {updateDocumentsAndSync,} from "../../slices/documents.ts";
 
 import {setSaving, setContextMenu} from "../../slices/ui.ts";
 
@@ -26,7 +33,7 @@ export default function Table() {
   const tableId = id ? parseInt(id) : 0;
   // const currentUserData = username ? userData[username] : undefined;
   const rawTable = useAppSelector((state) => state.document.tables[tableId])
-  const allUserTables = useAppSelector((state) => state.auth.tables);
+  const allUserTables = useAppSelector((state) => state.document.tables);
 
   const getColumnName = (index: number): string => {
     let columnName = "";
@@ -52,22 +59,26 @@ export default function Table() {
   const contextMenu = useAppSelector((state) => state.ui.contextMenu)
 
 
-
   const columns = Array.from({ length: N }, (_, i) => getColumnName(i));
   const rows = Array.from({ length: M }, (_, i) => (i + 1).toString());
 
-
-
   useEffect(() => {
     if (rawTable) {
+      dispatch(setCurrentTableIndex(tableId));
+      dispatch(setCurrentDocumentId('id' in rawTable ? String(rawTable.id) : null));
+      dispatch(setTableName(rawTable.name));
       dispatch(setSize({
         N: rawTable.N,
         M: rawTable.M
       }));
-        // eslint-disable-next-line react-hooks/immutability
-        dispatch(setTableData(rawTable.data));
+      dispatch(setTableData(rawTable.data));
     }
-  }, [dispatch, rawTable]);
+
+    return () => {
+      dispatch(setCurrentTableIndex(null));
+      dispatch(setCurrentDocumentId(null));
+    };
+  }, [dispatch, rawTable, tableId]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,26 +237,28 @@ export default function Table() {
     }
 
     return map;
-  }, [tableData]);
+  }, [getDisplayValue, tableData]);
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const handleSubmit = useCallback((e: React.KeyboardEvent<HTMLInputElement>,
-                                                              row: string,
-                                                              col: string) => {
+  const handleSubmit = useCallback((e: React.KeyboardEvent<HTMLInputElement>, row: string, col: string) => {
     if (e.key === "Enter") {
-      const newValue = e.currentTarget.value
+      const newValue = e.currentTarget.value;
+      const cellId = `${col}${row}`;
+      const oldValue = tableData[cellId] || "";
 
-      const newData = {
-        ...tableData,
-        [`${col}${row}`]: newValue
+      if (newValue === oldValue) {
+        dispatch(setIsEditable(false));
+        return;
       }
 
-      dispatch(setTableData(newData));
+      dispatch(recordUpdate({ cellId, oldValue }));
+
+      dispatch(setTableData({ ...tableData, [cellId]: newValue }));
+
       dispatch(setEditable(''));
       dispatch(setSelectedCellData(newValue));
       dispatch(setIsEditable(false));
     }
-  }, [dispatch, tableData])
+  }, [dispatch, tableData]);
 
 
 
@@ -450,7 +463,7 @@ export default function Table() {
     const closeMenu = () => dispatch(setContextMenu({ ...contextMenu, visible: false }));
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
-  }, [contextMenu]);
+  }, [contextMenu, dispatch]);
 
 
   const saveFunction = useCallback(() => {
@@ -464,29 +477,11 @@ export default function Table() {
     };
 
     const newTables = allUserTables.map((t, i) => i === tableId ? updatedTable : t);
-    dispatch(setUserData(newTables)); // Отправляем обновленный массив в authSlice
+    dispatch(updateDocumentsAndSync({newTables, username}));
     dispatch(setSaving('saved'));
   }, [username, rawTable, N, M, tableData, allUserTables, tableId, dispatch]);
 
   const stateRef = useRef({ tableData, size: {N, M}, rawTable });
-
-  const performSave = useCallback(async () => {
-    dispatch(setSaving('saving'));
-    const { tableData: d, size: s, rawTable: r } = stateRef.current;
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/documents/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: r?.name || "Без названия",
-          data: d, N: s.N, M: s.M,
-          updated_at: new Date().toISOString()
-        }),
-      });
-      if (!response.ok) throw new Error();
-      dispatch(setSaving('saved'));
-    } catch { dispatch(setSaving('error')); }
-  }, [id, dispatch]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -500,6 +495,26 @@ export default function Table() {
   }, [saveFunction]);
 
 
+  useEffect(() => {
+    const handleHistoryKeys = (e: KeyboardEvent) => {
+      const isCtrl = e.ctrlKey || e.metaKey;
+
+      // Undo
+      if (isCtrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        dispatch(undo());
+      }
+
+      // Redo
+      if (isCtrl && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+        e.preventDefault();
+        dispatch(redo());
+      }
+    };
+
+    window.addEventListener('keydown', handleHistoryKeys);
+    return () => window.removeEventListener('keydown', handleHistoryKeys);
+  }, [dispatch]);
 
   useEffect(() => {
     const handleClosePage = (e: BeforeUnloadEvent) => {
@@ -510,11 +525,6 @@ export default function Table() {
     window.addEventListener('beforeunload', handleClosePage);
     return () => window.removeEventListener('beforeunload', handleClosePage);
   }, [saveFunction]);
-
-  useEffect(() => {
-    const timer = setTimeout(performSave, 500);
-    return () => clearTimeout(timer);
-  }, [tableData, N, M, performSave]);
 
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>

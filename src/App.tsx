@@ -1,8 +1,16 @@
 import './App.css';
 import {Link} from "react-router-dom";
+import {useEffect, useRef} from "react";
 import {useAppDispatch, useAppSelector} from "./hooks.ts";
 import {setCreating, setRenaming} from "./slices/ui.ts";
-import {createTable, duplicateTable, renameTable, deleteTable, setActiveTable} from "./slices/documents.ts";
+import {
+  createTable,
+  duplicateTable,
+  renameTable,
+  deleteTable,
+  setActiveTable,
+  updateDocumentsAndSync
+} from "./slices/documents.ts";
 
 function App() {
 
@@ -13,6 +21,21 @@ function App() {
   const renaming = useAppSelector((state) => state.ui.renaming)
 
   const tables = useAppSelector((state) => state.document.tables);
+  const didMountRef = useRef(false);
+
+  useEffect(() => {
+    if (!username) return;
+
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+
+    dispatch(updateDocumentsAndSync({
+      newTables: tables,
+      username
+    }));
+  }, [tables, username, dispatch]);
 
   const handleCreateTable = (e: React.KeyboardEvent<HTMLInputElement>) => {
 
@@ -27,22 +50,19 @@ function App() {
 
   const handleDuplicate = (tableId: number) => {
     const table = structuredClone(tables[tableId]);
-    if (username){
-      table.name = table.name + " копия"
-
-      dispatch(duplicateTable(table))
-    }
+    table.name = table.name + " копия"
+    dispatch(duplicateTable(table))
   }
 
   const handleDelete = (tableName: string) => {
     const result = confirm("Уверены?")
-    if (result && username) {
+    if (result) {
       dispatch(deleteTable(tableName))
     }
   }
 
   const handleRename = (e: React.KeyboardEvent<HTMLInputElement>, name: string) => {
-    if (e.key === "Enter" && username) {
+    if (e.key === "Enter") {
       const newName = e.currentTarget.value;
 
       if (!newName.trim()) return;
