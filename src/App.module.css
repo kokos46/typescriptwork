@@ -1,0 +1,11 @@
+.App {
+    font-family: "Arial", sans-serif;
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+}
+
+.sidePanel{
+    width: 200px;
+    background-color: #f0f0f0;
+}

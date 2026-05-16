@@ -1,7 +1,7 @@
 import './Table.css'
 import React, {useEffect, useCallback, useRef, useMemo} from 'react';
 import {sum, average} from "../../utils/Equations.ts";
-import {useParams} from "react-router-dom";
+import {useBlocker, useParams} from "react-router-dom";
 import Cell from "./Cell/Cell.tsx";
 import {useAppDispatch, useAppSelector} from "../../hooks.ts";
 import {
@@ -27,10 +27,11 @@ import {setSaving, setContextMenu} from "../../slices/ui.ts";
 
 export default function Table() {
 
-  const {username, id} = useParams<{ username: string, id: string }>();
+  const {documentId} = useParams<{ documentId: string }>();
   // const {userData, setUserData} = useApp()!
+  const username = useAppSelector((state) => state.auth.username);
 
-  const tableId = id ? parseInt(id) : 0;
+  const tableId = documentId ? parseInt(documentId) : -1;
   // const currentUserData = username ? userData[username] : undefined;
   const rawTable = useAppSelector((state) => state.document.tables[tableId])
   const allUserTables = useAppSelector((state) => state.document.tables);
@@ -43,7 +44,6 @@ export default function Table() {
     }
     return columnName;
   };
-
 
   const dispatch = useAppDispatch();
   const {N, M} = useAppSelector((state) => (state.spreadsheet.size))
@@ -61,6 +61,27 @@ export default function Table() {
 
   const columns = Array.from({ length: N }, (_, i) => getColumnName(i));
   const rows = Array.from({ length: M }, (_, i) => (i + 1).toString());
+
+  const isDirty = useMemo(() => {
+    if (!rawTable) return false;
+
+    if (rawTable.N !== N || rawTable.M !== M) return true;
+
+    const currentKeys = Object.keys(tableData);
+    const rawKeys = Object.keys(rawTable.data || {});
+
+    if (currentKeys.length !== rawKeys.length) return true;
+
+    return currentKeys.some(key => tableData[key] !== rawTable.data[key]);
+  }, [tableData, N, M, rawTable]);
+
+  const blocker = useBlocker(
+    useCallback(
+      ({ currentLocation, nextLocation }) =>
+        isDirty && currentLocation.pathname !== nextLocation.pathname,
+      [isDirty]
+    )
+  );
 
   useEffect(() => {
     if (rawTable) {
@@ -526,8 +547,44 @@ export default function Table() {
     return () => window.removeEventListener('beforeunload', handleClosePage);
   }, [saveFunction]);
 
+  if (tableId === -1 || !rawTable) {
+    return (
+      <div className="error">
+        <p>404 документ не найден</p>
+      </div>
+    );
+  }
+
   return (
       <div onContextMenu={(e) => handleContextMenu(e)}>
+        {blocker.state === "blocked" && (
+          <div className="blocker-modal-overlay" style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center',
+            alignItems: 'center', zIndex: 9999
+          }}>
+            <div className="blocker-modal" style={{
+              background: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}>
+              <h3>Несохраненные изменения</h3>
+              <p>Вы изменили таблицу. Точно хотите покинуть страницу без сохранения данных?</p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                <button
+                  onClick={() => blocker.reset()}
+                  style={{ padding: '8px 16px', cursor: 'pointer' }}
+                >
+                  Остаться
+                </button>
+                <button
+                  onClick={() => blocker.proceed()}
+                  style={{ padding: '8px 16px', background: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Уйти без сохранения
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <p>
           {saving === 'saving' && <span style={{color: 'orange'}}>⏳ Сохранение...</span>}
           {saving === 'saved' && <span style={{color: 'green'}}>✅ Сохранено</span>}
