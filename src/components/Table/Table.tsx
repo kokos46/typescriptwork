@@ -28,12 +28,15 @@ import {setSaving, setContextMenu} from "../../slices/ui.ts";
 export default function Table() {
 
   const {documentId} = useParams<{ documentId: string }>();
-  // const {userData, setUserData} = useApp()!
   const username = useAppSelector((state) => state.auth.username);
 
-  const tableId = documentId ? parseInt(documentId) : -1;
-  // const currentUserData = username ? userData[username] : undefined;
-  const rawTable = useAppSelector((state) => state.document.tables[tableId])
+  const tableId = documentId ? documentId : undefined;
+  const rawTable = useAppSelector((state) =>
+    state.document.tables.find(
+      (table) => String(table.id) === String(tableId)
+    )
+  );
+
   const allUserTables = useAppSelector((state) => state.document.tables);
 
   const getColumnName = (index: number): string => {
@@ -85,7 +88,6 @@ export default function Table() {
 
   useEffect(() => {
     if (rawTable) {
-      dispatch(setCurrentTableIndex(tableId));
       dispatch(setCurrentDocumentId('id' in rawTable ? String(rawTable.id) : null));
       dispatch(setTableName(rawTable.name));
       dispatch(setSize({
@@ -497,7 +499,7 @@ export default function Table() {
       updated_at: new Date().toISOString()
     };
 
-    const newTables = allUserTables.map((t, i) => i === tableId ? updatedTable : t);
+    const newTables = allUserTables.map((t) => String(t.id) === String(tableId) ? updatedTable : t);
     dispatch(updateDocumentsAndSync({newTables, username}));
     dispatch(setSaving('saved'));
   }, [username, rawTable, N, M, tableData, allUserTables, tableId, dispatch]);
@@ -547,7 +549,7 @@ export default function Table() {
     return () => window.removeEventListener('beforeunload', handleClosePage);
   }, [saveFunction]);
 
-  if (tableId === -1 || !rawTable) {
+  if (tableId === undefined) {
     return (
       <div className="error">
         <p>404 документ не найден</p>

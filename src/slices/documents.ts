@@ -10,6 +10,7 @@ const initialState: DocumentsSlice = {
 }
 
 const emptyTable = {
+  id: '',
   name: '',
   active: false,
   created_at: '',
@@ -54,6 +55,9 @@ const documentsSlice = createSlice({
     setLocalTables: (state, action: PayloadAction<TableData[]>) => {
       state.tables = action.payload;
     },
+    clearDocuments: (state) => {
+      state.tables = [];
+    },
     setActiveTable: (state, action: PayloadAction<{name: string, active: boolean}>) => {
       const {name, active} = action.payload;
       state.tables = state.tables.map(table => {
@@ -66,6 +70,7 @@ const documentsSlice = createSlice({
     createTable: (state, action: PayloadAction<string>) => {
       const newTable = {
         ...emptyTable,
+        id: crypto.randomUUID().toString(),
         name: action.payload,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -83,6 +88,7 @@ const documentsSlice = createSlice({
     }>) => {
       state.tables.push({
         ...table.payload,
+        id: crypto.randomUUID().toString(),
         updated_at: new Date().toISOString()
       });
     },
@@ -120,4 +126,4 @@ const documentsSlice = createSlice({
 })
 
 export default documentsSlice.reducer;
-export const {setActiveTable, createTable, duplicateTable, renameTable, deleteTable, setTableData, setLocalTables} = documentsSlice.actions;
+export const {setActiveTable, createTable, duplicateTable, renameTable, deleteTable, setTableData, setLocalTables, clearDocuments} = documentsSlice.actions;

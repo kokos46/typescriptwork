@@ -1,27 +1,43 @@
 import styles from './App.module.css';
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAppDispatch } from "./hooks.ts";
-import { setUsername } from "./slices/auth.ts";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import {restoreSession} from "./slices/auth.ts";
+import {setLocalTables} from "./slices/documents.ts";
+import {loadTablesForUser} from "./utils/authStorage.ts";
 
 function App() {
   const dispatch = useAppDispatch();
+  const location = useLocation();
+  const sessionRestoreStartedRef = useRef(false);
 
   useEffect(() => {
-    const cookieString = document.cookie;
-    if (cookieString.startsWith('username=')) {
-      const savedUser = cookieString.replace('username=', '').trim();
-      if (savedUser) {
-        dispatch(setUsername(savedUser));
-      }
+    if (location.pathname === '/login' || location.pathname === '/register') {
+      return;
     }
-  }, [dispatch]);
+
+    if (sessionRestoreStartedRef.current) {
+      return;
+    }
+
+    sessionRestoreStartedRef.current = true;
+
+    dispatch(restoreSession())
+      .unwrap()
+      .then((user) => {
+        dispatch(setLocalTables(loadTablesForUser(user.email)));
+      })
+      .catch(() => undefined);
+  }, [dispatch, location.pathname]);
 
   return (
     <div className={styles.App}>
-      <div className={styles.sidePanel}></div>
-      <div className={styles.content}>
-        <Outlet />
+      <div className={styles.topPanel}></div>
+      <div className={styles.mainNav}>
+        <div className={styles.sidePanel}></div>
+        <div className={styles.content}>
+          <Outlet />
+        </div>
       </div>
     </div>
   );

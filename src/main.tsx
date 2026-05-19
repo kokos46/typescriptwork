@@ -9,29 +9,38 @@ import {store} from "./store.ts";
 import DashboardPage from "./components/DashboardPage/DashboardPage.tsx";
 import Auth from "./components/Auth/Auth.tsx";
 import Profile from "./components/Profile/Profile.tsx";
+import Register from "./components/Auth/Register.tsx";
+import RequireAuth from "./components/Auth/RequireAuth.tsx";
 
 const router = createBrowserRouter([
   {
-    // 1. Объявляем главный Layout для всего приложения (или его части)
     element: <App />,
     children: [
       {
+        index: true,
+        element: <Navigate to="/dashboard" replace />,
+      },
+      {
+        path: 'login',
+        element: <Auth />,
+      },
+      {
+        path: 'register',
+        element: <Register />,
+      },
+      {
         path: 'dashboard',
-        element: <Auth><DashboardPage /></Auth>,
+        element: <RequireAuth><DashboardPage /></RequireAuth>,
       },
       {
         path: 'documents/:documentId',
-        element: <Table />
+        element: <RequireAuth><Table /></RequireAuth>
       },
       {
         path: 'profile',
-        element: <Profile />
+        element: <RequireAuth><Profile /></RequireAuth>
       }
     ]
-  },
-  {
-    path: '/',
-    element: <Navigate to="/dashboard"/>
   },
   {
     path: '*',

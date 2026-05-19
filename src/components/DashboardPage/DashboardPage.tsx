@@ -81,7 +81,7 @@ export default function DashboardPage() {
           <div key={tableIndex} className="table-card">
             {
               renaming ? <input type="text" onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => handleRename(e, table.name)} defaultValue={table.name}/> :
-                <Link to={`/documents/${tableIndex}`} onClick={() => dispatch(setActiveTable({name: table.name, active: true}))}><h3>{table.name}</h3></Link>
+                <Link to={`/documents/${table.id}`} onClick={() => dispatch(setActiveTable({name: table.name, active: true}))}><h3>{table.name}</h3></Link>
             }
 
             <button onClick={() => handleDuplicate(tableIndex)}>Дублировать документ</button>
