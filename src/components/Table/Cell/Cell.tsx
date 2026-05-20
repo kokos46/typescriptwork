@@ -13,6 +13,9 @@ interface CellProps {
   editTableEnter: (e: React.KeyboardEvent<HTMLTableCellElement>) => void;
   colIndex: number;
   rowIndex: number;
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
 }
 
 function Cell({
@@ -28,7 +31,10 @@ function Cell({
   editTableEnter,
   colIndex,
   rowIndex,
-                             }: CellProps) {
+  bold,
+  italic,
+  underlined,
+}: CellProps) {
   return (
     <td onDoubleClick={editTable}
     onClick={(e) => handleClickSelect(e, colIndex, rowIndex)}
@@ -38,14 +44,18 @@ function Cell({
     onKeyDown={(e) => editTableEnter(e)}
     style={{
       "border": isSelected ? "2px solid blue" : "1px solid black",
-      "backgroundColor": isSelected ? "#e7f0ff" : "transparent"
+      "backgroundColor": isSelected ? "#e7f0ff" : "transparent",
     }}>
   {editable === cellId ? (
     <input type="text"
            onKeyDown={(e) => handleSubmit(e, row, col)}
            autoFocus
            defaultValue={displayValue || ''} />
-  ) : <p>{displayValue}</p>}
+  ) : <p style={{
+      "fontWeight": bold ? 'bold' : 'normal',
+      "fontStyle": italic ? 'italic' : 'normal',
+      "textDecoration": underlined ? "underline" : 'none'
+    }}>{displayValue}</p>}
 </td>
   )
 }

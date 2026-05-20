@@ -2,12 +2,13 @@ import { type Middleware } from '@reduxjs/toolkit';
 import {saveDocumentThunk} from '../slices/spreadsheet';
 import { updateDocumentsAndSync } from '../slices/documents';
 import {setSaving} from "../slices/ui.ts";
-import type { TableData } from "../slices/auth.ts";
+import type { CellStyle, TableData } from "../slices/auth.ts";
 
 interface LocalSpreadsheetState {
   currentTableIndex: number | null;
   currentDocumentId: string | null;
   tableData: Record<string, string>;
+  cellStyles: Record<string, CellStyle>;
   tableName: string;
   size: { N: number; M: number };
 }
@@ -31,6 +32,7 @@ export const autosaveMiddleware: Middleware<object, EssentialState> = (store) =>
       currentTableIndex,
       currentDocumentId,
       tableData,
+      cellStyles,
       tableName,
       size
     } = state.spreadsheet;
@@ -47,6 +49,7 @@ export const autosaveMiddleware: Middleware<object, EssentialState> = (store) =>
       currentDocumentId,
       tableName,
       tableData,
+      cellStyles,
       size
     });
 
@@ -58,6 +61,7 @@ export const autosaveMiddleware: Middleware<object, EssentialState> = (store) =>
       ...tables[currentTableIndex],
       name: tableName || tables[currentTableIndex].name,
       data: tableData,
+      cellStyles,
       N: size.N,
       M: size.M,
       updated_at: new Date().toISOString()

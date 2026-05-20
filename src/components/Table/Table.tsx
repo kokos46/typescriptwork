@@ -12,6 +12,8 @@ import {
   setAnchorCell,
   setSelectedCellData,
   setTableData,
+  setCellStyles,
+  toggleCellStyle,
   setColWidths,
   setRowHeights,
   setCurrentTableIndex,
@@ -19,7 +21,8 @@ import {
   setTableName,
   undo,
   redo,
-  recordUpdate
+  recordUpdate,
+  recordCellsUpdate
 } from "../../slices/spreadsheet.ts";
 import {updateDocumentsAndSync,} from "../../slices/documents.ts";
 
@@ -56,6 +59,7 @@ export default function Table() {
   const anchorCell = useAppSelector((state) => state.spreadsheet.anchorCell)
   const selectedCellData = useAppSelector((state) => state.spreadsheet.selectedCellData)
   const tableData = useAppSelector((state) => state.spreadsheet.tableData)
+  const cellStyles = useAppSelector((state) => state.spreadsheet.cellStyles)
   const colWidths = useAppSelector((state) => state.spreadsheet.colWidths)
   const rowHeights = useAppSelector((state) => state.spreadsheet.rowHeights)
   const saving = useAppSelector((state) => state.ui.saving)
@@ -75,8 +79,10 @@ export default function Table() {
 
     if (currentKeys.length !== rawKeys.length) return true;
 
-    return currentKeys.some(key => tableData[key] !== rawTable.data[key]);
-  }, [tableData, N, M, rawTable]);
+    if (currentKeys.some(key => tableData[key] !== rawTable.data[key])) return true;
+
+    return JSON.stringify(cellStyles) !== JSON.stringify(rawTable.cellStyles || {});
+  }, [cellStyles, tableData, N, M, rawTable]);
 
   const blocker = useBlocker(
     useCallback(
@@ -89,19 +95,23 @@ export default function Table() {
   useEffect(() => {
     if (rawTable) {
       dispatch(setCurrentDocumentId('id' in rawTable ? String(rawTable.id) : null));
+      dispatch(setCurrentTableIndex(
+        allUserTables.findIndex((table) => String(table.id) === String(tableId))
+      ));
       dispatch(setTableName(rawTable.name));
       dispatch(setSize({
         N: rawTable.N,
         M: rawTable.M
       }));
       dispatch(setTableData(rawTable.data));
+      dispatch(setCellStyles(rawTable.cellStyles || {}));
     }
 
     return () => {
       dispatch(setCurrentTableIndex(null));
       dispatch(setCurrentDocumentId(null));
     };
-  }, [dispatch, rawTable, tableId]);
+  }, [allUserTables, dispatch, rawTable, tableId]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -262,26 +272,214 @@ export default function Table() {
     return map;
   }, [getDisplayValue, tableData]);
 
+  const getCellIdByPosition = useCallback((colIndex: number, rowIndex: number) => {
+    const safeColIndex = Math.min(Math.max(colIndex, 0), columns.length - 1);
+    const safeRowIndex = Math.min(Math.max(rowIndex, 0), rows.length - 1);
+
+    return `${columns[safeColIndex]}${rows[safeRowIndex]}`;
+  }, [columns, rows]);
+
+  const getCellPosition = useCallback((cellId: string) => {
+    const cellData = cellId.match(/^([A-Z]+)(\d+)$/);
+
+    if (!cellData) return null;
+
+    const colIndex = columns.indexOf(cellData[1]);
+    const rowIndex = rows.indexOf(cellData[2]);
+
+    if (colIndex === -1 || rowIndex === -1) return null;
+
+    return { colIndex, rowIndex };
+  }, [columns, rows]);
+
+  const selectCell = useCallback((cellId: string) => {
+    const position = getCellPosition(cellId);
+
+    if (!position) return;
+
+    dispatch(setAnchorCell({ r: position.rowIndex, c: position.colIndex }));
+    dispatch(setSelectedCells([cellId]));
+    dispatch(setSelectedCellData(tableData[cellId] || ""));
+  }, [dispatch, getCellPosition, tableData]);
+
+  const selectCellByPosition = useCallback((colIndex: number, rowIndex: number) => {
+    selectCell(getCellIdByPosition(colIndex, rowIndex));
+  }, [getCellIdByPosition, selectCell]);
+
+  const commitCellValue = useCallback((cellId: string, newValue: string) => {
+    const oldValue = tableData[cellId] || "";
+
+    if (newValue === oldValue) return;
+
+    const nextTableData = { ...tableData };
+
+    if (newValue === "") {
+      delete nextTableData[cellId];
+    } else {
+      nextTableData[cellId] = newValue;
+    }
+
+    dispatch(recordUpdate({ cellId, oldValue }));
+    dispatch(setTableData(nextTableData));
+    dispatch(setSelectedCellData(newValue));
+  }, [dispatch, tableData]);
+
+  const moveSelection = useCallback((colDelta: number, rowDelta: number) => {
+    const baseCellId = selectedCells[0] || getCellIdByPosition(0, 0);
+    const position = getCellPosition(baseCellId);
+
+    if (!position) return;
+
+    selectCellByPosition(position.colIndex + colDelta, position.rowIndex + rowDelta);
+  }, [getCellIdByPosition, getCellPosition, selectCellByPosition, selectedCells]);
+
+  const getSelectedBounds = useCallback(() => {
+    const positions = selectedCells
+      .map(getCellPosition)
+      .filter((position): position is { colIndex: number; rowIndex: number } => position !== null);
+
+    if (positions.length === 0) return null;
+
+    return {
+      minCol: Math.min(...positions.map(({ colIndex }) => colIndex)),
+      maxCol: Math.max(...positions.map(({ colIndex }) => colIndex)),
+      minRow: Math.min(...positions.map(({ rowIndex }) => rowIndex)),
+      maxRow: Math.max(...positions.map(({ rowIndex }) => rowIndex)),
+    };
+  }, [getCellPosition, selectedCells]);
+
+  const copySelectedCells = useCallback(async () => {
+    const bounds = getSelectedBounds();
+
+    if (!bounds || !navigator.clipboard) return;
+
+    const copiedRows: string[] = [];
+
+    for (let rowIndex = bounds.minRow; rowIndex <= bounds.maxRow; rowIndex++) {
+      const rowValues: string[] = [];
+
+      for (let colIndex = bounds.minCol; colIndex <= bounds.maxCol; colIndex++) {
+        rowValues.push(tableData[getCellIdByPosition(colIndex, rowIndex)] || "");
+      }
+
+      copiedRows.push(rowValues.join("\t"));
+    }
+
+    try {
+      await navigator.clipboard.writeText(copiedRows.join("\n"));
+    } catch (error) {
+      console.error("Clipboard copy failed", error);
+    }
+  }, [getCellIdByPosition, getSelectedBounds, tableData]);
+
+  const updateCells = useCallback((updates: Record<string, string>) => {
+    const previousValues: Record<string, string> = {};
+    const nextTableData = { ...tableData };
+
+    Object.entries(updates).forEach(([cellId, value]) => {
+      previousValues[cellId] = tableData[cellId] || "";
+
+      if (value === "") {
+        delete nextTableData[cellId];
+      } else {
+        nextTableData[cellId] = value;
+      }
+    });
+
+    dispatch(recordCellsUpdate(previousValues));
+    dispatch(setTableData(nextTableData));
+
+    const firstUpdatedCell = Object.keys(updates)[0];
+
+    if (firstUpdatedCell) {
+      dispatch(setSelectedCellData(updates[firstUpdatedCell] || ""));
+    }
+  }, [dispatch, tableData]);
+
+  const clearSelectedCells = useCallback(() => {
+    if (selectedCells.length === 0) return;
+
+    updateCells(Object.fromEntries(selectedCells.map((cellId) => [cellId, ""])));
+  }, [selectedCells, updateCells]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    const startCellId = selectedCells[0] || getCellIdByPosition(0, 0);
+    const startPosition = getCellPosition(startCellId);
+
+    if (!startPosition || !navigator.clipboard) return;
+
+    let clipboardText = "";
+
+    try {
+      clipboardText = await navigator.clipboard.readText();
+    } catch (error) {
+      console.error("Clipboard paste failed", error);
+      return;
+    }
+    const pastedRows = clipboardText.replace(/\r/g, "").replace(/\n$/, "").split("\n");
+    const updates: Record<string, string> = {};
+
+    pastedRows.forEach((rowValue, rowOffset) => {
+      rowValue.split("\t").forEach((cellValue, colOffset) => {
+        const colIndex = startPosition.colIndex + colOffset;
+        const rowIndex = startPosition.rowIndex + rowOffset;
+
+        if (colIndex < columns.length && rowIndex < rows.length) {
+          updates[getCellIdByPosition(colIndex, rowIndex)] = cellValue;
+        }
+      });
+    });
+
+    if (Object.keys(updates).length === 0) return;
+
+    updateCells(updates);
+  }, [columns.length, getCellIdByPosition, getCellPosition, rows.length, selectedCells, updateCells]);
+
+  const selectAllCells = useCallback(() => {
+    const allCells = getCellRange(0, rows.length - 1, 0, columns.length - 1, columns, rows);
+
+    dispatch(setAnchorCell({ r: 0, c: 0 }));
+    dispatch(setSelectedCells(allCells));
+    dispatch(setSelectedCellData(tableData[getCellIdByPosition(0, 0)] || ""));
+  }, [columns, dispatch, getCellIdByPosition, rows, tableData]);
+
+  const startEditingSelectedCell = useCallback(() => {
+    const cellId = selectedCells[0] || getCellIdByPosition(0, 0);
+
+    selectCell(cellId);
+    dispatch(setEditable(cellId));
+    dispatch(setIsEditable(true));
+  }, [dispatch, getCellIdByPosition, selectCell, selectedCells]);
+
   const handleSubmit = useCallback((e: React.KeyboardEvent<HTMLInputElement>, row: string, col: string) => {
-    if (e.key === "Enter") {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      dispatch(setEditable(''));
+      dispatch(setIsEditable(false));
+      return;
+    }
+
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
       const newValue = e.currentTarget.value;
       const cellId = `${col}${row}`;
-      const oldValue = tableData[cellId] || "";
+      const position = getCellPosition(cellId);
 
-      if (newValue === oldValue) {
-        dispatch(setIsEditable(false));
+      commitCellValue(cellId, newValue);
+      dispatch(setEditable(''));
+      dispatch(setIsEditable(false));
+
+      if (!position) {
         return;
       }
 
-      dispatch(recordUpdate({ cellId, oldValue }));
-
-      dispatch(setTableData({ ...tableData, [cellId]: newValue }));
-
-      dispatch(setEditable(''));
-      dispatch(setSelectedCellData(newValue));
-      dispatch(setIsEditable(false));
+      if (e.key === "Enter") {
+        selectCellByPosition(position.colIndex, position.rowIndex + 1);
+      } else {
+        selectCellByPosition(position.colIndex + (e.shiftKey ? -1 : 1), position.rowIndex);
+      }
     }
-  }, [dispatch, tableData]);
+  }, [commitCellValue, dispatch, getCellPosition, selectCellByPosition]);
 
 
 
@@ -324,6 +522,14 @@ export default function Table() {
     dispatch(setSize({N: N, M: M+1}));
   }
 
+  const selectedStyle = selectedCells.length > 0 ? cellStyles[selectedCells[0]] || {} : {};
+
+  const handleToggleStyle = (style: 'bold' | 'italic' | 'underlined') => {
+    if (selectedCells.length === 0) return;
+
+    dispatch(toggleCellStyle({ cellIds: selectedCells, style }));
+  };
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     dispatch(setContextMenu({ x: e.pageX, y: e.pageY, visible: true }));
@@ -360,6 +566,7 @@ export default function Table() {
         N: N,
         M: M,
         data: tableData,
+        cellStyles,
       }, null, 2);
     }
 
@@ -477,10 +684,11 @@ export default function Table() {
   useEffect(() => {
     stateRef.current = {
       tableData,
+      cellStyles,
       size: {N, M},
       rawTable
     };
-  }, [tableData, N, M, rawTable]);
+  }, [cellStyles, tableData, N, M, rawTable]);
 
   useEffect(() => {
     const closeMenu = () => dispatch(setContextMenu({ ...contextMenu, visible: false }));
@@ -496,48 +704,109 @@ export default function Table() {
     const updatedTable = {
       ...rawTable,
       N, M, data: tableData,
+      cellStyles,
       updated_at: new Date().toISOString()
     };
 
     const newTables = allUserTables.map((t) => String(t.id) === String(tableId) ? updatedTable : t);
     dispatch(updateDocumentsAndSync({newTables, username}));
     dispatch(setSaving('saved'));
-  }, [username, rawTable, N, M, tableData, allUserTables, tableId, dispatch]);
+  }, [username, rawTable, N, M, tableData, cellStyles, allUserTables, tableId, dispatch]);
 
-  const stateRef = useRef({ tableData, size: {N, M}, rawTable });
+  const stateRef = useRef({ tableData, cellStyles, size: {N, M}, rawTable });
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    const handleKeyboardShortcuts = async (e: KeyboardEvent) => {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      const target = e.target;
+      const isTextInput = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+
+      if (isCtrl && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveFunction();
+        return;
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveFunction]);
 
+      if (isTextInput) {
+        return;
+      }
 
-  useEffect(() => {
-    const handleHistoryKeys = (e: KeyboardEvent) => {
-      const isCtrl = e.ctrlKey || e.metaKey;
-
-      // Undo
       if (isCtrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         dispatch(undo());
+        return;
       }
 
-      // Redo
       if (isCtrl && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
         e.preventDefault();
         dispatch(redo());
+        return;
+      }
+
+      if (isCtrl && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAllCells();
+        return;
+      }
+
+      if (isCtrl && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        await copySelectedCells();
+        return;
+      }
+
+      if (isCtrl && e.key.toLowerCase() === 'x') {
+        e.preventDefault();
+        await copySelectedCells();
+        clearSelectedCells();
+        return;
+      }
+
+      if (isCtrl && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        await pasteFromClipboard();
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        clearSelectedCells();
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        startEditingSelectedCell();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        moveSelection(e.shiftKey ? -1 : 1, 0);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dispatch(setEditable(''));
+        dispatch(setIsEditable(false));
+        dispatch(setContextMenu({ ...contextMenu, visible: false }));
       }
     };
 
-    window.addEventListener('keydown', handleHistoryKeys);
-    return () => window.removeEventListener('keydown', handleHistoryKeys);
-  }, [dispatch]);
+    window.addEventListener('keydown', handleKeyboardShortcuts);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
+  }, [
+    clearSelectedCells,
+    contextMenu,
+    copySelectedCells,
+    dispatch,
+    moveSelection,
+    pasteFromClipboard,
+    saveFunction,
+    selectAllCells,
+    startEditingSelectedCell
+  ]);
 
   useEffect(() => {
     const handleClosePage = (e: BeforeUnloadEvent) => {
@@ -592,6 +861,38 @@ export default function Table() {
           {saving === 'saved' && <span style={{color: 'green'}}>✅ Сохранено</span>}
           {saving === 'error' && <span style={{color: 'red'}}>❌ Ошибка сохранения</span>}
         </p>
+        <div className="table-toolbar">
+          <button
+            type="button"
+            className={selectedStyle.bold ? 'active' : ''}
+            onClick={() => handleToggleStyle('bold')}
+            disabled={selectedCells.length === 0}
+            aria-label="Жирный текст"
+            title="Жирный"
+          >
+            <strong>B</strong>
+          </button>
+          <button
+            type="button"
+            className={selectedStyle.italic ? 'active' : ''}
+            onClick={() => handleToggleStyle('italic')}
+            disabled={selectedCells.length === 0}
+            aria-label="Курсив"
+            title="Курсив"
+          >
+            <em>I</em>
+          </button>
+          <button
+            type="button"
+            className={selectedStyle.underlined ? 'active' : ''}
+            onClick={() => handleToggleStyle('underlined')}
+            disabled={selectedCells.length === 0}
+            aria-label="Подчеркнутый текст"
+            title="Подчеркнутый"
+          >
+            <span className="underline-icon">U</span>
+          </button>
+        </div>
         <input type="text" value={selectedCellData} className="cellDataEntry" readOnly/>
         <table id="table">
           <thead>
@@ -621,6 +922,7 @@ export default function Table() {
                 {columns.map((col, colIndex) => {
                   const cellId = `${col}${row}`;
                   const isSelected = selectedCells.includes(cellId);
+                  const style = cellStyles[cellId] || {};
 
                   return (
                     <Cell
@@ -636,6 +938,9 @@ export default function Table() {
                       editTableEnter={editTableEnter}
                       colIndex={colIndex}
                       rowIndex={rowIndex}
+                      bold={style.bold}
+                      italic={style.italic}
+                      underlined={style.underlined}
                     />
                   )
                 })}

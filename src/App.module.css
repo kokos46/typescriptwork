@@ -1,16 +1,31 @@
-.mainNav {
+.App {
     font-family: "Arial", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.mainNav {
     display: flex;
     flex-direction: row;
-    min-height: 100vh;
+    flex: 1;
+    min-height: 0;
 }
 
 .sidePanel{
+    flex: 0 0 200px;
     width: 200px;
     background-color: #f0f0f0;
 }
 
+.content {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+}
+
 .topPanel{
+    flex: 0 0 20px;
     height: 20px;
     background-color: #909090;
 }

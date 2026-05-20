@@ -1,5 +1,11 @@
 import {createAsyncThunk, createSlice, type PayloadAction} from '@reduxjs/toolkit'
 
+export interface CellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
+}
+
 interface SpreadsheetState {
   currentDocumentId: string | null;
   currentTableIndex: number | null;
@@ -16,6 +22,7 @@ interface SpreadsheetState {
   selectedCells: string[],
   anchorCell?: { r: number, c: number } | null,
   selectedCellData: string,
+  cellStyles: Record<string, CellStyle>,
   colWidths: Record<string, number>,
   rowHeights: Record<string, number>,
   updates: Record<string, string>[],
@@ -38,6 +45,7 @@ const initialState: SpreadsheetState = {
   selectedCells: [],
   anchorCell: null,
   selectedCellData: '',
+  cellStyles: {},
   colWidths: {},
   rowHeights: {},
   updates: [],
@@ -79,6 +87,20 @@ export const spreadsheetSlice = createSlice({
     setTableData: (state, action: PayloadAction<Record<string, string>>) => {
       state.tableData = action.payload
     },
+    setCellStyles: (state, action: PayloadAction<Record<string, CellStyle>>) => {
+      state.cellStyles = action.payload
+    },
+    toggleCellStyle: (state, action: PayloadAction<{ cellIds: string[], style: keyof CellStyle }>) => {
+      const { cellIds, style } = action.payload;
+      const shouldEnable = cellIds.some((cellId) => !state.cellStyles[cellId]?.[style]);
+
+      cellIds.forEach((cellId) => {
+        state.cellStyles[cellId] = {
+          ...state.cellStyles[cellId],
+          [style]: shouldEnable
+        };
+      });
+    },
     setColWidths: (state, action: PayloadAction<Record<string, number>>) => {
       state.colWidths = action.payload
     },
@@ -91,26 +113,50 @@ export const spreadsheetSlice = createSlice({
       state.updates.push({ [cellId]: oldValue });
       state.redoStack = [];
     },
+    recordCellsUpdate: (state, action: PayloadAction<Record<string, string>>) => {
+      state.updates.push(action.payload);
+      state.redoStack = [];
+    },
 
     undo: (state) => {
       const lastUpdate = state.updates.pop();
       if (lastUpdate) {
-        const cellId = Object.keys(lastUpdate)[0];
-        const oldValue = lastUpdate[cellId];
+        const redoUpdate: Record<string, string> = {};
+        const nextTableData = { ...state.tableData };
 
-        state.redoStack.push({ [cellId]: state.tableData[cellId] || "" });
-        state.tableData = { ...state.tableData, [cellId]: oldValue };
+        Object.entries(lastUpdate).forEach(([cellId, oldValue]) => {
+          redoUpdate[cellId] = state.tableData[cellId] || "";
+
+          if (oldValue === "") {
+            delete nextTableData[cellId];
+          } else {
+            nextTableData[cellId] = oldValue;
+          }
+        });
+
+        state.redoStack.push(redoUpdate);
+        state.tableData = nextTableData;
       }
     },
 
     redo: (state) => {
       const nextUpdate = state.redoStack.pop();
       if (nextUpdate) {
-        const cellId = Object.keys(nextUpdate)[0];
-        const newValue = nextUpdate[cellId];
+        const undoUpdate: Record<string, string> = {};
+        const nextTableData = { ...state.tableData };
 
-        state.updates.push({ [cellId]: state.tableData[cellId] || "" });
-        state.tableData = { ...state.tableData, [cellId]: newValue };
+        Object.entries(nextUpdate).forEach(([cellId, newValue]) => {
+          undoUpdate[cellId] = state.tableData[cellId] || "";
+
+          if (newValue === "") {
+            delete nextTableData[cellId];
+          } else {
+            nextTableData[cellId] = newValue;
+          }
+        });
+
+        state.updates.push(undoUpdate);
+        state.tableData = nextTableData;
       }
     }
   }
@@ -128,7 +174,7 @@ export const saveDocumentThunk = createAsyncThunk<void, string, ThunkApiConfig>(
   async (id: string, { getState, rejectWithValue }) => {
     // Используем typeof для получения типа стейта без прямого импорта RootState
     const state = getState();
-    const { tableData, size, tableName } = state.spreadsheet;
+    const { tableData, cellStyles, size, tableName } = state.spreadsheet;
 
     try {
       const response = await fetch(`http://127.0.0.1:8000/documents/${id}`, {
@@ -137,6 +183,7 @@ export const saveDocumentThunk = createAsyncThunk<void, string, ThunkApiConfig>(
         body: JSON.stringify({
           name: tableName || "Без названия",
           data: tableData,
+          cellStyles,
           N: size.N,
           M: size.M,
           updated_at: new Date().toISOString()
@@ -164,9 +211,12 @@ export const {
   setAnchorCell,
   setSelectedCellData,
   setTableData,
+  setCellStyles,
+  toggleCellStyle,
   setColWidths,
   setRowHeights,
   undo,
   redo,
-  recordUpdate
+  recordUpdate,
+  recordCellsUpdate
 } = spreadsheetSlice.actions;

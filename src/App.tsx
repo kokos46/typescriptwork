@@ -1,7 +1,7 @@
 import styles from './App.module.css';
 import { useEffect, useRef } from "react";
 import { useAppDispatch } from "./hooks.ts";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, Link } from "react-router-dom";
 import {restoreSession} from "./slices/auth.ts";
 import {setLocalTables} from "./slices/documents.ts";
 import {loadTablesForUser} from "./utils/authStorage.ts";
@@ -34,7 +34,16 @@ function App() {
     <div className={styles.App}>
       <div className={styles.topPanel}></div>
       <div className={styles.mainNav}>
-        <div className={styles.sidePanel}></div>
+        <div className={styles.sidePanel}>
+          <nav style={{padding: 12}}>
+            <div style={{marginBottom: 8}}>
+              <Link to="/dashboard">Панель</Link>
+            </div>
+            <div>
+              <Link to="/profile">Профиль</Link>
+            </div>
+          </nav>
+        </div>
         <div className={styles.content}>
           <Outlet />
         </div>

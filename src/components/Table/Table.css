@@ -54,6 +54,45 @@
     width: 100%;
 }
 
+.table-toolbar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin: 8px 0;
+}
+
+.table-toolbar button {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #c7ced8;
+    background: #ffffff;
+    color: #1f2937;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+}
+
+.table-toolbar button:hover:not(:disabled) {
+    background: #eef5ff;
+    border-color: #4f8df7;
+}
+
+.table-toolbar button.active {
+    background: #dbeafe;
+    border-color: #2563eb;
+    color: #1d4ed8;
+}
+
+.table-toolbar button:disabled {
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.underline-icon {
+    text-decoration: underline;
+    font-weight: 600;
+}
+
 .resizer-col {
     position: absolute;
     top: 0;

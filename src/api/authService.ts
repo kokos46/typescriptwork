@@ -191,6 +191,50 @@ export const getCurrentUser = async () => {
   return response.json() as Promise<User>;
 };
 
+export const updateProfile = async (data: {username?: string}) => {
+  const token = accessToken;
+
+  if (!token) throw new Error('Сессия истекла');
+
+  const response = await fetchWithTimeout(`${API_URL}/me`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Не удалось обновить профиль'));
+  }
+
+  return response.json();
+};
+
+export const changePassword = async (oldPassword: string, newPassword: string) => {
+  const token = accessToken;
+
+  if (!token) throw new Error('Сессия истекла');
+
+  const response = await fetchWithTimeout(`${API_URL}/auth/change-password`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({old_password: oldPassword, new_password: newPassword}),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Не удалось сменить пароль'));
+  }
+
+  return response.json();
+};
+
 const getErrorMessage = async (response: Response, fallback: string) => {
   try {
     const data = await response.json();

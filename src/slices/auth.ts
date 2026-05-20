@@ -16,6 +16,13 @@ export interface TableData {
   N: number;
   M: number;
   data: Record<string, string>;
+  cellStyles?: Record<string, CellStyle>;
+}
+
+export interface CellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
 }
 
 interface AuthState {
